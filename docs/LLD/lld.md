@@ -1,380 +1,328 @@
-# Low-Level Design (LLD) - E-Commerce Product Management System
+# Low-Level Design (LLD) - E-commerce Product Management System
 
 ## 1. Project Overview
 
-### Project Information
-- **Framework**: Spring Boot 3.3.0
-- **Java Version**: 21
-- **Database**: PostgreSQL
-- **Server Port**: 8080
-- **Architecture**: RESTful API with layered architecture
-
-### Dependencies
-- spring-boot-starter-web
-- spring-boot-starter-data-jpa
-- postgresql
-- lombok
-- h2 (for testing)
+**Framework:** Spring Boot  
+**Language:** Java 21  
+**Database:** PostgreSQL  
+**Module:** ProductManagement  
 
 ## 2. System Architecture
 
-### 2.1 High-Level Architecture
-
-```mermaid
-graph TB
-    Client[Client Application] --> Controller[ProductController]
-    Controller --> Service[ProductService]
-    Service --> Repository[ProductRepository]
-    Repository --> Database[(PostgreSQL Database)]
-    
-    subgraph "Spring Boot Application"
-        Controller
-        Service
-        Repository
-    end
-```
-
-### 2.2 Class Diagram
+### 2.1 Class Diagram
 
 ```mermaid
 classDiagram
     class ProductController {
+        <<@RestController>>
         -ProductService productService
+        +getAllProducts() ResponseEntity~List~Product~~
+        +getProductById(Long id) ResponseEntity~Product~
+        +createProduct(Product product) ResponseEntity~Product~
+        +updateProduct(Long id, Product product) ResponseEntity~Product~
+        +deleteProduct(Long id) ResponseEntity~Void~
+        +getProductsByCategory(String category) ResponseEntity~List~Product~~
+        +searchProducts(String keyword) ResponseEntity~List~Product~~
+    }
+    
+    class ProductService {
+        <<@Service>>
+        -ProductRepository productRepository
         +getAllProducts() List~Product~
         +getProductById(Long id) Product
         +createProduct(Product product) Product
         +updateProduct(Long id, Product product) Product
         +deleteProduct(Long id) void
         +getProductsByCategory(String category) List~Product~
-        +searchProducts(String name) List~Product~
-    }
-    
-    class ProductService {
-        -ProductRepository productRepository
-        +getAllProducts() List~Product~
-        +getProductById(Long id) Optional~Product~
-        +createProduct(Product product) Product
-        +updateProduct(Long id, Product product) Product
-        +deleteProduct(Long id) void
-        +getProductsByCategory(String category) List~Product~
-        +searchProducts(String name) List~Product~
-    }
-    
-    class Product {
-        -Long id
-        -String name
-        -String description
-        -Double price
-        -Integer stock
-        -String imageUrl
-        -String category
-        +getId() Long
-        +getName() String
-        +getDescription() String
-        +getPrice() Double
-        +getStock() Integer
-        +getImageUrl() String
-        +getCategory() String
-        +setters...
+        +searchProducts(String keyword) List~Product~
     }
     
     class ProductRepository {
+        <<@Repository>>
         <<interface>>
         +findAll() List~Product~
         +findById(Long id) Optional~Product~
         +save(Product product) Product
-        +delete(Product product) void
+        +deleteById(Long id) void
         +findByCategory(String category) List~Product~
-        +findByNameContainingIgnoreCase(String name) List~Product~
+        +findByNameContainingIgnoreCase(String keyword) List~Product~
     }
     
-    ProductController --> ProductService : uses
-    ProductService --> ProductRepository : uses
-    ProductService --> Product : manages
-    ProductRepository --> Product : persists
+    class Product {
+        <<@Entity>>
+        -Long id
+        -String name
+        -String description
+        -BigDecimal price
+        -String category
+        -Integer stockQuantity
+        -LocalDateTime createdAt
+        +getId() Long
+        +setId(Long id) void
+        +getName() String
+        +setName(String name) void
+        +getDescription() String
+        +setDescription(String description) void
+        +getPrice() BigDecimal
+        +setPrice(BigDecimal price) void
+        +getCategory() String
+        +setCategory(String category) void
+        +getStockQuantity() Integer
+        +setStockQuantity(Integer stockQuantity) void
+        +getCreatedAt() LocalDateTime
+        +setCreatedAt(LocalDateTime createdAt) void
+    }
+    
+    ProductController --> ProductService : depends on
+    ProductService --> ProductRepository : depends on
+    ProductRepository --> Product : manages
+    ProductService --> Product : operates on
 ```
 
-## 3. Database Design
-
-### 3.1 Entity Relationship Diagram
+### 2.2 Entity Relationship Diagram
 
 ```mermaid
 erDiagram
     PRODUCTS {
-        BIGINT id PK "Auto Generated (IDENTITY)"
-        VARCHAR name "NOT NULL"
-        VARCHAR description "MAX LENGTH 1000"
-        DOUBLE price "NOT NULL"
-        INTEGER stock "NOT NULL"
-        VARCHAR imageUrl "NULLABLE"
-        VARCHAR category "NOT NULL"
+        BIGINT id PK "AUTO_INCREMENT, NOT NULL"
+        VARCHAR name "NOT NULL, MAX_LENGTH(255)"
+        TEXT description "NULLABLE"
+        DECIMAL price "NOT NULL, PRECISION(10,2)"
+        VARCHAR category "NOT NULL, MAX_LENGTH(100)"
+        INTEGER stock_quantity "NOT NULL, DEFAULT 0"
+        TIMESTAMP created_at "NOT NULL, DEFAULT CURRENT_TIMESTAMP"
     }
 ```
 
-### 3.2 Database Configuration
+## 3. Sequence Diagrams
 
-- **Database Type**: PostgreSQL
-- **URL**: jdbc:postgresql://localhost:5432/ecommerce
-- **Username**: postgres
-- **Driver**: org.postgresql.Driver
-- **Hibernate DDL**: update
-- **Show SQL**: true
-- **Format SQL**: true
+### 3.1 Get All Products
 
-## 4. API Endpoints
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+    
+    Client->>+ProductController: GET /api/products
+    ProductController->>+ProductService: getAllProducts()
+    ProductService->>+ProductRepository: findAll()
+    ProductRepository->>+Database: SELECT * FROM products
+    Database-->>-ProductRepository: List<Product>
+    ProductRepository-->>-ProductService: List<Product>
+    ProductService-->>-ProductController: List<Product>
+    ProductController-->>-Client: ResponseEntity<List<Product>>
+```
 
-### 4.1 REST API Overview
+### 3.2 Get Product By ID
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+    
+    Client->>+ProductController: GET /api/products/{id}
+    ProductController->>+ProductService: getProductById(id)
+    ProductService->>+ProductRepository: findById(id)
+    ProductRepository->>+Database: SELECT * FROM products WHERE id = ?
+    Database-->>-ProductRepository: Optional<Product>
+    ProductRepository-->>-ProductService: Optional<Product>
+    
+    alt Product Found
+        ProductService-->>ProductController: Product
+        ProductController-->>Client: ResponseEntity<Product> (200)
+    else Product Not Found
+        ProductService-->>ProductController: throw ProductNotFoundException
+        ProductController-->>Client: ResponseEntity (404)
+    end
+```
+
+### 3.3 Create Product
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+    
+    Client->>+ProductController: POST /api/products (Product data)
+    ProductController->>+ProductService: createProduct(product)
+    
+    Note over ProductService: Validate product data
+    Note over ProductService: Set createdAt timestamp
+    
+    ProductService->>+ProductRepository: save(product)
+    ProductRepository->>+Database: INSERT INTO products (...) VALUES (...)
+    Database-->>-ProductRepository: Product (with generated ID)
+    ProductRepository-->>-ProductService: Product
+    ProductService-->>-ProductController: Product
+    ProductController-->>-Client: ResponseEntity<Product> (201)
+```
+
+### 3.4 Update Product
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+    
+    Client->>+ProductController: PUT /api/products/{id} (Product data)
+    ProductController->>+ProductService: updateProduct(id, product)
+    
+    ProductService->>+ProductRepository: findById(id)
+    ProductRepository->>+Database: SELECT * FROM products WHERE id = ?
+    Database-->>-ProductRepository: Optional<Product>
+    ProductRepository-->>-ProductService: Optional<Product>
+    
+    alt Product Exists
+        Note over ProductService: Update product fields
+        ProductService->>+ProductRepository: save(updatedProduct)
+        ProductRepository->>+Database: UPDATE products SET ... WHERE id = ?
+        Database-->>-ProductRepository: Updated Product
+        ProductRepository-->>-ProductService: Updated Product
+        ProductService-->>ProductController: Updated Product
+        ProductController-->>Client: ResponseEntity<Product> (200)
+    else Product Not Found
+        ProductService-->>ProductController: throw ProductNotFoundException
+        ProductController-->>Client: ResponseEntity (404)
+    end
+```
+
+### 3.5 Delete Product
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+    
+    Client->>+ProductController: DELETE /api/products/{id}
+    ProductController->>+ProductService: deleteProduct(id)
+    
+    ProductService->>+ProductRepository: findById(id)
+    ProductRepository->>+Database: SELECT * FROM products WHERE id = ?
+    Database-->>-ProductRepository: Optional<Product>
+    ProductRepository-->>-ProductService: Optional<Product>
+    
+    alt Product Exists
+        ProductService->>+ProductRepository: deleteById(id)
+        ProductRepository->>+Database: DELETE FROM products WHERE id = ?
+        Database-->>-ProductRepository: Success
+        ProductRepository-->>-ProductService: void
+        ProductService-->>ProductController: void
+        ProductController-->>Client: ResponseEntity (204)
+    else Product Not Found
+        ProductService-->>ProductController: throw ProductNotFoundException
+        ProductController-->>Client: ResponseEntity (404)
+    end
+```
+
+### 3.6 Get Products By Category
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+    
+    Client->>+ProductController: GET /api/products/category/{category}
+    ProductController->>+ProductService: getProductsByCategory(category)
+    ProductService->>+ProductRepository: findByCategory(category)
+    ProductRepository->>+Database: SELECT * FROM products WHERE category = ?
+    Database-->>-ProductRepository: List<Product>
+    ProductRepository-->>-ProductService: List<Product>
+    ProductService-->>-ProductController: List<Product>
+    ProductController-->>-Client: ResponseEntity<List<Product>>
+```
+
+### 3.7 Search Products
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+    
+    Client->>+ProductController: GET /api/products/search?keyword={keyword}
+    ProductController->>+ProductService: searchProducts(keyword)
+    ProductService->>+ProductRepository: findByNameContainingIgnoreCase(keyword)
+    ProductRepository->>+Database: SELECT * FROM products WHERE LOWER(name) LIKE LOWER(?)
+    Database-->>-ProductRepository: List<Product>
+    ProductRepository-->>-ProductService: List<Product>
+    ProductService-->>-ProductController: List<Product>
+    ProductController-->>-Client: ResponseEntity<List<Product>>
+```
+
+## 4. API Endpoints Summary
 
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|--------------|----------|
-| GET | /api/products | Get all products | None | List<Product> |
-| GET | /api/products/{id} | Get product by ID | None | Product |
-| POST | /api/products | Create new product | Product | Product |
-| PUT | /api/products/{id} | Update existing product | Product | Product |
-| DELETE | /api/products/{id} | Delete product | None | Void |
-| GET | /api/products/category/{category} | Get products by category | None | List<Product> |
-| GET | /api/products/search?name={name} | Search products by name | None | List<Product> |
+| GET | `/api/products` | Get all products | None | List<Product> |
+| GET | `/api/products/{id}` | Get product by ID | None | Product |
+| POST | `/api/products` | Create new product | Product | Product |
+| PUT | `/api/products/{id}` | Update existing product | Product | Product |
+| DELETE | `/api/products/{id}` | Delete product | None | None |
+| GET | `/api/products/category/{category}` | Get products by category | None | List<Product> |
+| GET | `/api/products/search?keyword={keyword}` | Search products by name | None | List<Product> |
 
-## 5. Sequence Diagrams
+## 5. Database Schema
 
-### 5.1 Get All Products
+### Products Table
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>ProductController: GET /api/products
-    ProductController->>ProductService: getAllProducts()
-    ProductService->>ProductRepository: findAll()
-    ProductRepository->>Database: SELECT * FROM products
-    Database-->>ProductRepository: List<Product>
-    ProductRepository-->>ProductService: List<Product>
-    ProductService-->>ProductController: List<Product>
-    ProductController-->>Client: HTTP 200 + List<Product>
+```sql
+CREATE TABLE products (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    price DECIMAL(10,2) NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    stock_quantity INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_products_category ON products(category);
+CREATE INDEX idx_products_name ON products(name);
 ```
 
-### 5.2 Get Product by ID
+## 6. Technology Stack
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>ProductController: GET /api/products/{id}
-    ProductController->>ProductService: getProductById(id)
-    ProductService->>ProductRepository: findById(id)
-    ProductRepository->>Database: SELECT * FROM products WHERE id = ?
-    Database-->>ProductRepository: Optional<Product>
-    ProductRepository-->>ProductService: Optional<Product>
-    ProductService-->>ProductController: Product
-    ProductController-->>Client: HTTP 200 + Product
-```
+- **Backend Framework:** Spring Boot 3.x
+- **Language:** Java 21
+- **Database:** PostgreSQL
+- **ORM:** Spring Data JPA / Hibernate
+- **Build Tool:** Maven/Gradle
+- **API Documentation:** Swagger/OpenAPI 3
 
-### 5.3 Create Product
+## 7. Design Patterns Used
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>ProductController: POST /api/products + Product
-    ProductController->>ProductService: createProduct(product)
-    ProductService->>ProductRepository: save(product)
-    ProductRepository->>Database: INSERT INTO products VALUES (...)
-    Database-->>ProductRepository: Saved Product
-    ProductRepository-->>ProductService: Saved Product
-    ProductService-->>ProductController: Saved Product
-    ProductController-->>Client: HTTP 201 + Product
-```
+1. **MVC Pattern:** Separation of Controller, Service, and Repository layers
+2. **Repository Pattern:** Data access abstraction through ProductRepository
+3. **Dependency Injection:** Spring's IoC container manages dependencies
+4. **DTO Pattern:** Data Transfer Objects for API requests/responses
+5. **Exception Handling:** Custom exceptions for business logic errors
 
-### 5.4 Update Product
+## 8. Key Features
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>ProductController: PUT /api/products/{id} + Product
-    ProductController->>ProductService: updateProduct(id, product)
-    ProductService->>ProductRepository: findById(id)
-    ProductRepository->>Database: SELECT * FROM products WHERE id = ?
-    Database-->>ProductRepository: Optional<Product>
-    ProductRepository-->>ProductService: Optional<Product>
-    
-    alt Product exists
-        ProductService->>ProductService: Update product fields
-        ProductService->>ProductRepository: save(updatedProduct)
-        ProductRepository->>Database: UPDATE products SET ... WHERE id = ?
-        Database-->>ProductRepository: Updated Product
-        ProductRepository-->>ProductService: Updated Product
-        ProductService-->>ProductController: Updated Product
-        ProductController-->>Client: HTTP 200 + Product
-    else Product not found
-        ProductService-->>ProductController: RuntimeException
-        ProductController-->>Client: HTTP 404 Not Found
-    end
-```
-
-### 5.5 Delete Product
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>ProductController: DELETE /api/products/{id}
-    ProductController->>ProductService: deleteProduct(id)
-    ProductService->>ProductRepository: findById(id)
-    ProductRepository->>Database: SELECT * FROM products WHERE id = ?
-    Database-->>ProductRepository: Optional<Product>
-    ProductRepository-->>ProductService: Optional<Product>
-    
-    alt Product exists
-        ProductService->>ProductRepository: delete(product)
-        ProductRepository->>Database: DELETE FROM products WHERE id = ?
-        Database-->>ProductRepository: Success
-        ProductRepository-->>ProductService: Success
-        ProductService-->>ProductController: Success
-        ProductController-->>Client: HTTP 204 No Content
-    else Product not found
-        ProductService-->>ProductController: RuntimeException
-        ProductController-->>Client: HTTP 404 Not Found
-    end
-```
-
-### 5.6 Get Products by Category
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>ProductController: GET /api/products/category/{category}
-    ProductController->>ProductService: getProductsByCategory(category)
-    ProductService->>ProductRepository: findByCategory(category)
-    ProductRepository->>Database: SELECT * FROM products WHERE category = ?
-    Database-->>ProductRepository: List<Product>
-    ProductRepository-->>ProductService: List<Product>
-    ProductService-->>ProductController: List<Product>
-    ProductController-->>Client: HTTP 200 + List<Product>
-```
-
-### 5.7 Search Products by Name
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>ProductController: GET /api/products/search?name={name}
-    ProductController->>ProductService: searchProducts(name)
-    ProductService->>ProductRepository: findByNameContainingIgnoreCase(name)
-    ProductRepository->>Database: SELECT * FROM products WHERE LOWER(name) LIKE LOWER(?)
-    Database-->>ProductRepository: List<Product>
-    ProductRepository-->>ProductService: List<Product>
-    ProductService-->>ProductController: List<Product>
-    ProductController-->>Client: HTTP 200 + List<Product>
-```
-
-## 6. Configuration Details
-
-### 6.1 CORS Configuration
-
-- **Allowed Origins**: https://ecomm-frontend-dvcdhygrandkdyhm.eastus-01.azurewebsites.net
-- **Allowed Methods**: GET, POST, PUT, DELETE, OPTIONS
-- **Allowed Headers**: *
-
-### 6.2 Service Layer Logic
-
-#### ProductService Methods:
-
-1. **getAllProducts()**
-   - Calls `productRepository.findAll()`
-   - Returns list of all products
-
-2. **getProductById(Long id)**
-   - Calls `productRepository.findById(id)`
-   - Returns `Optional<Product>`
-
-3. **createProduct(Product product)**
-   - Receives Product object
-   - Calls `productRepository.save(product)`
-   - Returns saved Product
-
-4. **updateProduct(Long id, Product product)**
-   - Finds product by ID using `productRepository.findById(id)`
-   - Throws RuntimeException if product not found
-   - Updates product fields (name, description, price, stock, imageUrl, category)
-   - Calls `productRepository.save(product)`
-   - Returns updated Product
-
-5. **deleteProduct(Long id)**
-   - Finds product by ID using `productRepository.findById(id)`
-   - Throws RuntimeException if product not found
-   - Calls `productRepository.delete(product)`
-
-6. **getProductsByCategory(String category)**
-   - Calls `productRepository.findByCategory(category)`
-   - Returns list of products matching category
-
-7. **searchProducts(String name)**
-   - Calls `productRepository.findByNameContainingIgnoreCase(name)`
-   - Returns list of products with names containing search term
-
-## 7. Data Model Specifications
-
-### Product Entity Constraints:
-
-- **id**: Primary Key, Auto Generated (IDENTITY)
-- **name**: Not Null
-- **description**: Maximum Length 1000 characters
-- **price**: Not Null
-- **stock**: Not Null
-- **imageUrl**: Nullable
-- **category**: Not Null
-
-## 8. Error Handling
-
-- **404 Not Found**: When product with given ID doesn't exist
-- **400 Bad Request**: When request body validation fails
-- **500 Internal Server Error**: For unexpected server errors
-
-## 9. Performance Considerations
-
-- Database indexing on frequently queried fields (id, category, name)
-- Connection pooling for database connections
-- Caching strategies for frequently accessed products
-- Pagination for large result sets
-
-## 10. Security Considerations
-
-- Input validation for all API endpoints
-- SQL injection prevention through JPA/Hibernate
-- CORS configuration for cross-origin requests
-- Authentication and authorization (to be implemented)
-
----
-
-*This LLD document provides a comprehensive overview of the Product Management System architecture, including detailed diagrams and specifications for implementation.*
+- RESTful API design following HTTP standards
+- Proper HTTP status codes for different scenarios
+- Input validation and error handling
+- Database indexing for performance optimization
+- Transactional operations for data consistency
+- Pagination support for large datasets (can be extended)
+- Search functionality with case-insensitive matching
