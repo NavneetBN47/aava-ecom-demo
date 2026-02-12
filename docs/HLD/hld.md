@@ -1,122 +1,106 @@
 # E-Commerce System - High Level Design
 
+This document contains the high-level design diagrams for the E-Commerce Spring Boot Application.
+
 ## System Overview
 
-This document contains the High Level Design (HLD) for the E-Commerce Spring Boot Application. The system follows a layered microservice architecture pattern using Spring Boot 3.3.0, PostgreSQL, and Java 21.
+- **Name**: E-Commerce Spring Boot Application
+- **Tech Stack**: Spring Boot 3.3.0, PostgreSQL, Java 21
+- **Architecture**: Three-Tier Layered Architecture (Controller-Service-Repository)
 
-## Architecture Diagrams
+## C4 System Context Diagram
 
-### 1. System Context Diagram
-
-The following diagram shows the high-level view of the E-Commerce System and its interactions with users and external systems:
+The following diagram shows the system context and how users interact with the E-Commerce system.
 
 ```mermaid
 C4Context
-    title System Context Diagram for E-Commerce System
+    title System Context Diagram for E-Commerce Application
     
-    Person(user, "Customer", "A customer who wants to browse and purchase products")
+    Person(customer, "Customer", "A customer who browses and purchases products")
+    Person(admin, "Admin User", "Administrator who manages products and orders")
     
-    System(ecommerce, "E-Commerce System", "Allows customers to view products, manage inventory, and process orders")
+    System(ecommerce, "E-Commerce System", "Allows customers to browse products, place orders, and manage their accounts")
     
     System_Ext(payment, "Payment Gateway", "External payment processing system")
-    System_Ext(shipping, "Shipping Provider", "External shipping and logistics system")
-    System_Ext(inventory, "Inventory Management", "External inventory tracking system")
+    System_Ext(shipping, "Shipping Service", "External shipping and logistics provider")
+    System_Ext(email, "Email Service", "External email notification service")
     
-    Rel(user, ecommerce, "Uses", "HTTPS")
-    Rel(ecommerce, payment, "Processes payments", "HTTPS/API")
-    Rel(ecommerce, shipping, "Manages shipping", "HTTPS/API")
-    Rel(ecommerce, inventory, "Syncs inventory", "HTTPS/API")
+    Rel(customer, ecommerce, "Browses products, places orders", "HTTPS")
+    Rel(admin, ecommerce, "Manages products and orders", "HTTPS")
+    Rel(ecommerce, payment, "Processes payments", "HTTPS/REST")
+    Rel(ecommerce, shipping, "Manages shipping", "HTTPS/REST")
+    Rel(ecommerce, email, "Sends notifications", "SMTP")
     
-    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+    UpdateElementStyle(customer, $fontColor="#000000", $bgColor="#87CEEB")
+    UpdateElementStyle(admin, $fontColor="#000000", $bgColor="#87CEEB")
+    UpdateElementStyle(ecommerce, $fontColor="#ffffff", $bgColor="#1168bd")
 ```
 
-### 2. Container Diagram
+## C4 Container Diagram
 
-The following diagram shows the internal structure of the E-Commerce System, including its containers and their interactions:
+The following diagram shows the containers within the E-Commerce system and their interactions.
 
 ```mermaid
 C4Container
     title Container Diagram for E-Commerce System
     
-    Person(user, "Customer", "A customer who wants to browse and purchase products")
+    Person(customer, "Customer", "A customer who browses and purchases products")
+    Person(admin, "Admin User", "Administrator who manages products and orders")
     
     System_Boundary(c1, "E-Commerce System") {
-        Container(web, "Web Application", "React/Angular", "Delivers the static content and e-commerce single page application")
-        Container(mobile, "Mobile App", "React Native/Flutter", "Provides e-commerce functionality via mobile devices")
-        Container(api, "Product Management Service", "Spring Boot 3.3.0, Java 21", "Provides product management functionality via JSON/HTTPS API. Contains ProductController, ProductService, ProductRepository, Product Entity")
-        ContainerDb(db, "Database", "PostgreSQL", "Stores product information including id, name, description, price, stock, image_url, category")
+        Container(webapp, "Web Application", "React/Angular SPA", "Provides the user interface for customers and admins")
+        Container(api, "API Application", "Spring Boot 3.3.0, Java 21", "Handles REST APIs, business logic, and CRUD operations")
+        Container(db, "Database", "PostgreSQL", "Stores product inventory, user data, and order information")
     }
     
     System_Ext(payment, "Payment Gateway", "External payment processing system")
-    System_Ext(shipping, "Shipping Provider", "External shipping and logistics system")
+    System_Ext(shipping, "Shipping Service", "External shipping and logistics provider")
+    System_Ext(email, "Email Service", "External email notification service")
     
-    Rel(user, web, "Uses", "HTTPS")
-    Rel(user, mobile, "Uses", "HTTPS")
-    
-    Rel(web, api, "Makes API calls to", "JSON/HTTPS")
-    Rel(mobile, api, "Makes API calls to", "JSON/HTTPS")
-    
+    Rel(customer, webapp, "Uses", "HTTPS")
+    Rel(admin, webapp, "Uses", "HTTPS")
+    Rel(webapp, api, "Makes API calls to", "JSON/REST over HTTP")
     Rel(api, db, "Reads from and writes to", "JDBC")
+    Rel(api, payment, "Processes payments via", "HTTPS/REST")
+    Rel(api, shipping, "Manages shipping via", "HTTPS/REST")
+    Rel(api, email, "Sends notifications via", "SMTP")
     
-    Rel(api, payment, "Processes payments", "JSON/HTTPS")
-    Rel(api, shipping, "Manages shipping", "JSON/HTTPS")
-    
-    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+    UpdateElementStyle(customer, $fontColor="#000000", $bgColor="#87CEEB")
+    UpdateElementStyle(admin, $fontColor="#000000", $bgColor="#87CEEB")
+    UpdateElementStyle(webapp, $fontColor="#ffffff", $bgColor="#85BBF0")
+    UpdateElementStyle(api, $fontColor="#ffffff", $bgColor="#85BBF0")
+    UpdateElementStyle(db, $fontColor="#ffffff", $bgColor="#85BBF0")
 ```
 
-## Data Flow Description
+## Architecture Details
 
-The system follows these primary data flows:
+### Components Description
 
-1. **User Interaction Flow:**
-   - User interacts with Web/Mobile App via HTTPS
-   - Web/Mobile App renders UI and handles user interactions
+1. **API Application (Spring Boot Service)**
+   - Handles REST APIs
+   - Implements business logic
+   - Performs CRUD operations
+   - Built with Spring Boot 3.3.0 and Java 21
 
-2. **API Communication Flow:**
-   - Web/Mobile App sends requests to Product Management Service via JSON/REST over HTTPS
-   - Product Management Service processes business logic through ProductService
-   - ProductController handles REST API endpoints
+2. **Database (PostgreSQL)**
+   - Stores product inventory and metadata
+   - Manages user accounts and authentication data
+   - Handles order and transaction records
 
-3. **Data Persistence Flow:**
-   - Product Management Service connects to PostgreSQL Database via JDBC
-   - ProductRepository handles CRUD operations
-   - Database returns Result Sets to Product Management Service
+3. **Client Applications (Web Application)**
+   - Provides user interface for customers and administrators
+   - Consumes REST APIs from the backend
+   - Handles user interactions and data presentation
 
-4. **Response Flow:**
-   - Product Management Service sends JSON responses back to Web/Mobile App
-   - Web/Mobile App processes responses and updates UI
-   - User sees updated content through UI rendering
+### Data Flow Summary
 
-## Technical Components
+- **User ↔ Web App**: HTTPS communication for secure user interactions
+- **Web App ↔ API**: JSON/REST over HTTP for data exchange
+- **API ↔ Database**: JDBC for database operations and data persistence
 
-### Product Management Service Components:
-- **ProductController**: Handles REST API endpoints
-- **ProductService**: Contains business logic
-- **ProductRepository**: Manages data access layer
-- **Product Entity**: Represents product data model
-
-### Database Schema:
-- **Products Table Fields:**
-  - id (Primary Key)
-  - name
-  - description
-  - price
-  - stock
-  - image_url
-  - category
-
-### Key Features:
-- CRUD operations for products
-- Product search and filtering
-- Data validation
-- RESTful API design
-- Microservice architecture
-- Layered application structure
-
-## Technology Stack
+### Technology Stack
 
 - **Backend**: Spring Boot 3.3.0, Java 21
 - **Database**: PostgreSQL
-- **Architecture**: Layered Microservice
-- **Communication**: REST API, JSON, HTTPS
-- **Data Access**: JDBC, Spring Data JPA
+- **Architecture Pattern**: Three-Tier Layered Architecture (Controller-Service-Repository)
+- **Communication**: REST APIs, HTTPS, JDBC
