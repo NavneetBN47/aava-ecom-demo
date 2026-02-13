@@ -1,0 +1,55 @@
+erDiagram
+    PRODUCT {
+        bigint id PK
+        varchar name
+        varchar description
+        double_precision price
+        integer quantity
+        varchar sku
+        boolean active
+        timestamp created_at
+        timestamp updated_at
+        bigint category_id FK
+    }
+    
+    CATEGORY {
+        bigint id PK
+        varchar name
+        varchar description
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ORDER_ITEM {
+        bigint id PK
+        bigint order_id FK
+        bigint product_id FK
+        integer quantity
+        double_precision price
+        timestamp created_at
+    }
+    
+    ORDERS {
+        bigint id PK
+        bigint customer_id FK
+        varchar status
+        double_precision total_amount
+        timestamp order_date
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    CUSTOMER {
+        bigint id PK
+        varchar first_name
+        varchar last_name
+        varchar email
+        varchar phone
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    CATEGORY ||--o{ PRODUCT : contains
+    PRODUCT ||--o{ ORDER_ITEM : "included in"
+    ORDERS ||--o{ ORDER_ITEM : contains
+    CUSTOMER ||--o{ ORDERS : places
