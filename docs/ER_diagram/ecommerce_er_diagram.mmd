@@ -1,0 +1,10 @@
+erDiagram
+    products {
+        bigint id PK "generated"
+        varchar name "not_null"
+        varchar(1000) description
+        double_precision price "not_null"
+        integer stock "not_null"
+        varchar imageUrl
+        varchar category "not_null"
+    }
