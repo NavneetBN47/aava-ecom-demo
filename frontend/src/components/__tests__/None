@@ -1,0 +1,78 @@
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import { BrowserRouter } from 'react-router-dom';
+import Home from '../Home';
+
+describe('Home Component', () => {
+  const renderWithRouter = (component) => {
+    return render(<BrowserRouter>{component}</BrowserRouter>);
+  };
+
+  test('renders without crashing', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/welcome/i)).toBeInTheDocument();
+  });
+
+  test('displays hero section with correct title', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/Welcome to E-Shop/i)).toBeInTheDocument();
+  });
+
+  test('displays hero section with correct subtitle', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/Discover amazing products at great prices/i)).toBeInTheDocument();
+  });
+
+  test('displays Shop Now link', () => {
+    renderWithRouter(<Home />);
+    const shopNowLink = screen.getByRole('link', { name: /shop now/i });
+    expect(shopNowLink).toBeInTheDocument();
+    expect(shopNowLink).toHaveAttribute('href', '/products');
+  });
+
+  test('displays Free Shipping feature', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/Free Shipping/i)).toBeInTheDocument();
+  });
+
+  test('displays Secure Payment feature', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/Secure Payment/i)).toBeInTheDocument();
+  });
+
+  test('displays Easy Returns feature', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/Easy Returns/i)).toBeInTheDocument();
+  });
+
+  test('displays Quality Products feature', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/Quality Products/i)).toBeInTheDocument();
+  });
+
+  test('renders all four feature sections', () => {
+    renderWithRouter(<Home />);
+    const features = [
+      /Free Shipping/i,
+      /Secure Payment/i,
+      /Easy Returns/i,
+      /Quality Products/i
+    ];
+    features.forEach(feature => {
+      expect(screen.getByText(feature)).toBeInTheDocument();
+    });
+  });
+
+  test('hero section is present in the document', () => {
+    renderWithRouter(<Home />);
+    const heroSection = screen.getByText(/Welcome to E-Shop/i).closest('section');
+    expect(heroSection).toBeInTheDocument();
+  });
+
+  test('features section is present in the document', () => {
+    renderWithRouter(<Home />);
+    expect(screen.getByText(/Free Shipping/i)).toBeInTheDocument();
+    expect(screen.getByText(/Secure Payment/i)).toBeInTheDocument();
+  });
+});
