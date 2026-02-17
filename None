@@ -1,0 +1,152 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import Cart from '../Cart';
+
+describe('Cart Component', () => {
+  const mockOnRemoveFromCart = jest.fn();
+  const mockOnUpdateQuantity = jest.fn();
+
+  const mockCartItems = [
+    {
+      id: 1,
+      name: 'Product 1',
+      price: 29.99,
+      quantity: 2,
+      imageUrl: 'https://example.com/product1.jpg'
+    },
+    {
+      id: 2,
+      name: 'Product 2',
+      price: 49.99,
+      quantity: 1,
+      imageUrl: 'https://example.com/product2.jpg'
+    }
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('renders without crashing', () => {
+    render(
+      <Cart
+        cart={[]}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    expect(screen.getByText(/cart/i)).toBeInTheDocument();
+  });
+
+  test('displays empty cart message when cart is empty', () => {
+    render(
+      <Cart
+        cart={[]}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    expect(screen.getByText(/empty/i)).toBeInTheDocument();
+  });
+
+  test('displays cart items when cart has products', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    expect(screen.getByText('Product 1')).toBeInTheDocument();
+    expect(screen.getByText('Product 2')).toBeInTheDocument();
+  });
+
+  test('displays correct prices for cart items', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    expect(screen.getByText(/29.99/)).toBeInTheDocument();
+    expect(screen.getByText(/49.99/)).toBeInTheDocument();
+  });
+
+  test('displays correct quantities for cart items', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    const quantityInputs = screen.getAllByRole('spinbutton');
+    expect(quantityInputs[0]).toHaveValue(2);
+    expect(quantityInputs[1]).toHaveValue(1);
+  });
+
+  test('calculates and displays correct total', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    const expectedTotal = (29.99 * 2 + 49.99 * 1).toFixed(2);
+    expect(screen.getByText(new RegExp(expectedTotal))).toBeInTheDocument();
+  });
+
+  test('calls onRemoveFromCart when remove button is clicked', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    const removeButtons = screen.getAllByRole('button', { name: /remove/i });
+    fireEvent.click(removeButtons[0]);
+    expect(mockOnRemoveFromCart).toHaveBeenCalledWith(1);
+  });
+
+  test('calls onUpdateQuantity when quantity is changed', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    const quantityInputs = screen.getAllByRole('spinbutton');
+    fireEvent.change(quantityInputs[0], { target: { value: '3' } });
+    expect(mockOnUpdateQuantity).toHaveBeenCalledWith(1, 3);
+  });
+
+  test('displays order summary section', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    expect(screen.getByText(/order summary/i)).toBeInTheDocument();
+    expect(screen.getByText(/total/i)).toBeInTheDocument();
+  });
+
+  test('renders product images', () => {
+    render(
+      <Cart
+        cart={mockCartItems}
+        onRemoveFromCart={mockOnRemoveFromCart}
+        onUpdateQuantity={mockOnUpdateQuantity}
+      />
+    );
+    const images = screen.getAllByRole('img');
+    expect(images).toHaveLength(2);
+    expect(images[0]).toHaveAttribute('src', 'https://example.com/product1.jpg');
+  });
+});
