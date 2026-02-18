@@ -1,26 +1,26 @@
 # Low Level Design Document
 ## E-commerce Product Management System
 
+### Version History
+| Version | Date | Author | Description |
+|---------|------|--------|-------------|
+| 1.0 | Initial | Team | Initial LLD for Product Management |
+| 1.1 | Current | Team | Added Shopping Cart Management (SCRUM-1140) |
+
 ---
 
 ## 1. Project Overview
 
-### 1.1 Purpose
-This document provides a detailed low-level design for the E-commerce Product Management System. It describes the internal structure, components, classes, database schema, and interactions required to implement the system.
+### Modules
+- **ProductManagement**: Handles all product-related operations including CRUD operations, search, and category-based filtering
+- **ShoppingCartManagement**: Manages shopping cart operations including adding/removing items, updating quantities, and viewing cart contents
 
-### 1.2 Scope
-The system includes the following modules:
-- **ProductManagement**: Handles product catalog operations
-- **InventoryManagement**: Manages stock levels and inventory tracking
-- **OrderManagement**: Processes customer orders and order lifecycle
-- **ShoppingCartManagement**: Manages shopping cart operations and cart items
-
-### 1.3 Technology Stack
-- **Backend Framework**: Spring Boot (Java)
-- **Database**: PostgreSQL
-- **ORM**: Hibernate/JPA
+### Technology Stack
+- **Framework**: Spring Boot 3.x
+- **Language**: Java 21
+- **Database**: PostgreSQL/MySQL
+- **Build Tool**: Maven/Gradle
 - **API Style**: RESTful
-- **Authentication**: JWT-based
 
 ---
 
@@ -28,1211 +28,770 @@ The system includes the following modules:
 
 ### 2.1 Class Diagram
 
-```plantuml
-@startuml
+```mermaid
+classDiagram
+    class ProductController {
+        -ProductService productService
+        +getAllProducts() ResponseEntity
+        +getProductById(Long id) ResponseEntity
+        +createProduct(ProductDTO) ResponseEntity
+        +updateProduct(Long id, ProductDTO) ResponseEntity
+        +deleteProduct(Long id) ResponseEntity
+        +getProductsByCategory(String category) ResponseEntity
+        +searchProducts(String keyword) ResponseEntity
+    }
 
-' Product Management Classes
-class ProductController {
-  - productService: ProductService
-  + createProduct(ProductDTO): ResponseEntity
-  + getProduct(Long): ResponseEntity
-  + updateProduct(Long, ProductDTO): ResponseEntity
-  + deleteProduct(Long): ResponseEntity
-  + listProducts(Pageable): ResponseEntity
-}
+    class ProductService {
+        -ProductRepository productRepository
+        +getAllProducts() List~Product~
+        +getProductById(Long id) Optional~Product~
+        +createProduct(Product) Product
+        +updateProduct(Long id, Product) Product
+        +deleteProduct(Long id) void
+        +getProductsByCategory(String category) List~Product~
+        +searchProducts(String keyword) List~Product~
+    }
 
-class ProductService {
-  - productRepository: ProductRepository
-  - inventoryService: InventoryService
-  + createProduct(ProductDTO): Product
-  + getProductById(Long): Product
-  + updateProduct(Long, ProductDTO): Product
-  + deleteProduct(Long): void
-  + getAllProducts(Pageable): Page<Product>
-  + searchProducts(String): List<Product>
-}
+    class ProductRepository {
+        <<interface>>
+        +findAll() List~Product~
+        +findById(Long id) Optional~Product~
+        +save(Product) Product
+        +deleteById(Long id) void
+        +findByCategory(String category) List~Product~
+        +searchByNameOrDescription(String keyword) List~Product~
+    }
 
-class ProductRepository {
-  <<interface>>
-  + findById(Long): Optional<Product>
-  + findByCategory(String): List<Product>
-  + findByNameContaining(String): List<Product>
-  + save(Product): Product
-  + deleteById(Long): void
-}
+    class Product {
+        -Long id
+        -String name
+        -String description
+        -BigDecimal price
+        -String category
+        -Integer stockQuantity
+        -LocalDateTime createdAt
+        -LocalDateTime updatedAt
+    }
 
-class Product {
-  - id: Long
-  - name: String
-  - description: String
-  - price: BigDecimal
-  - category: String
-  - imageUrl: String
-  - createdAt: LocalDateTime
-  - updatedAt: LocalDateTime
-}
+    class ShoppingCartController {
+        -ShoppingCartService shoppingCartService
+        +addProductToCart(Long userId, Long productId, Integer quantity) ResponseEntity
+        +viewCart(Long userId) ResponseEntity
+        +updateCartItemQuantity(Long userId, Long cartItemId, Integer quantity) ResponseEntity
+        +removeItemFromCart(Long userId, Long cartItemId) ResponseEntity
+        +clearCart(Long userId) ResponseEntity
+    }
 
-' Inventory Management Classes
-class InventoryController {
-  - inventoryService: InventoryService
-  + getInventory(Long): ResponseEntity
-  + updateStock(Long, Integer): ResponseEntity
-  + checkAvailability(Long, Integer): ResponseEntity
-}
+    class ShoppingCartService {
+        -ShoppingCartRepository cartRepository
+        -CartItemRepository cartItemRepository
+        -ProductRepository productRepository
+        +addProductToCart(Long userId, Long productId, Integer quantity) ShoppingCart
+        +getCartByUserId(Long userId) ShoppingCart
+        +updateCartItemQuantity(Long userId, Long cartItemId, Integer quantity) ShoppingCart
+        +removeItemFromCart(Long userId, Long cartItemId) void
+        +clearCart(Long userId) void
+        +calculateCartTotal(Long userId) BigDecimal
+    }
 
-class InventoryService {
-  - inventoryRepository: InventoryRepository
-  + getInventoryByProductId(Long): Inventory
-  + updateStock(Long, Integer): Inventory
-  + reserveStock(Long, Integer): boolean
-  + releaseStock(Long, Integer): void
-  + checkAvailability(Long, Integer): boolean
-}
+    class ShoppingCartRepository {
+        <<interface>>
+        +findByUserId(Long userId) Optional~ShoppingCart~
+        +save(ShoppingCart) ShoppingCart
+        +deleteByUserId(Long userId) void
+    }
 
-class InventoryRepository {
-  <<interface>>
-  + findByProductId(Long): Optional<Inventory>
-  + save(Inventory): Inventory
-}
+    class CartItemRepository {
+        <<interface>>
+        +findByCartId(Long cartId) List~CartItem~
+        +findById(Long id) Optional~CartItem~
+        +save(CartItem) CartItem
+        +deleteById(Long id) void
+    }
 
-class Inventory {
-  - id: Long
-  - productId: Long
-  - quantity: Integer
-  - reservedQuantity: Integer
-  - lastUpdated: LocalDateTime
-}
+    class ShoppingCart {
+        -Long id
+        -Long userId
+        -List~CartItem~ items
+        -LocalDateTime createdAt
+        -LocalDateTime updatedAt
+        +addItem(CartItem) void
+        +removeItem(Long itemId) void
+        +updateItemQuantity(Long itemId, Integer quantity) void
+        +calculateTotal() BigDecimal
+        +clear() void
+    }
 
-' Order Management Classes
-class OrderController {
-  - orderService: OrderService
-  + createOrder(OrderDTO): ResponseEntity
-  + getOrder(Long): ResponseEntity
-  + updateOrderStatus(Long, String): ResponseEntity
-  + cancelOrder(Long): ResponseEntity
-  + getUserOrders(Long): ResponseEntity
-}
+    class CartItem {
+        -Long id
+        -Long cartId
+        -Long productId
+        -String productName
+        -BigDecimal productPrice
+        -Integer quantity
+        -BigDecimal subtotal
+        +calculateSubtotal() BigDecimal
+    }
 
-class OrderService {
-  - orderRepository: OrderRepository
-  - orderItemRepository: OrderItemRepository
-  - inventoryService: InventoryService
-  - productService: ProductService
-  + createOrder(OrderDTO): Order
-  + getOrderById(Long): Order
-  + updateOrderStatus(Long, OrderStatus): Order
-  + cancelOrder(Long): void
-  + getOrdersByUserId(Long): List<Order>
-}
-
-class OrderRepository {
-  <<interface>>
-  + findById(Long): Optional<Order>
-  + findByUserId(Long): List<Order>
-  + findByStatus(OrderStatus): List<Order>
-  + save(Order): Order
-}
-
-class OrderItemRepository {
-  <<interface>>
-  + findByOrderId(Long): List<OrderItem>
-  + save(OrderItem): OrderItem
-}
-
-class Order {
-  - id: Long
-  - userId: Long
-  - orderDate: LocalDateTime
-  - status: OrderStatus
-  - totalAmount: BigDecimal
-  - shippingAddress: String
-  - orderItems: List<OrderItem>
-}
-
-class OrderItem {
-  - id: Long
-  - orderId: Long
-  - productId: Long
-  - quantity: Integer
-  - price: BigDecimal
-  - subtotal: BigDecimal
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-}
-
-' Shopping Cart Management Classes
-class ShoppingCartController {
-  - shoppingCartService: ShoppingCartService
-  + getCart(Long): ResponseEntity
-  + addItem(Long, CartItemDTO): ResponseEntity
-  + updateItemQuantity(Long, Long, Integer): ResponseEntity
-  + removeItem(Long, Long): ResponseEntity
-  + clearCart(Long): ResponseEntity
-}
-
-class ShoppingCartService {
-  - shoppingCartRepository: ShoppingCartRepository
-  - cartItemRepository: CartItemRepository
-  - productService: ProductService
-  - inventoryService: InventoryService
-  + getCartByUserId(Long): ShoppingCart
-  + addItemToCart(Long, Long, Integer): ShoppingCart
-  + updateCartItemQuantity(Long, Long, Integer): ShoppingCart
-  + removeItemFromCart(Long, Long): void
-  + clearCart(Long): void
-  + calculateCartTotal(Long): BigDecimal
-}
-
-class ShoppingCartRepository {
-  <<interface>>
-  + findByUserId(Long): Optional<ShoppingCart>
-  + save(ShoppingCart): ShoppingCart
-  + deleteByUserId(Long): void
-}
-
-class CartItemRepository {
-  <<interface>>
-  + findByCartId(Long): List<CartItem>
-  + findByCartIdAndProductId(Long, Long): Optional<CartItem>
-  + save(CartItem): CartItem
-  + deleteById(Long): void
-}
-
-class ShoppingCart {
-  - id: Long
-  - userId: Long
-  - cartItems: List<CartItem>
-  - createdAt: LocalDateTime
-  - updatedAt: LocalDateTime
-  + addItem(CartItem): void
-  + removeItem(Long): void
-  + updateItemQuantity(Long, Integer): void
-  + calculateTotal(): BigDecimal
-  + clear(): void
-}
-
-class CartItem {
-  - id: Long
-  - cartId: Long
-  - productId: Long
-  - quantity: Integer
-  - price: BigDecimal
-  - addedAt: LocalDateTime
-  + updateQuantity(Integer): void
-  + getSubtotal(): BigDecimal
-}
-
-' Relationships
-ProductController --> ProductService
-ProductService --> ProductRepository
-ProductService --> InventoryService
-ProductRepository --> Product
-
-InventoryController --> InventoryService
-InventoryService --> InventoryRepository
-InventoryRepository --> Inventory
-
-OrderController --> OrderService
-OrderService --> OrderRepository
-OrderService --> OrderItemRepository
-OrderService --> InventoryService
-OrderService --> ProductService
-OrderRepository --> Order
-OrderItemRepository --> OrderItem
-Order --> OrderStatus
-Order "1" *-- "many" OrderItem
-
-ShoppingCartController --> ShoppingCartService
-ShoppingCartService --> ShoppingCartRepository
-ShoppingCartService --> CartItemRepository
-ShoppingCartService --> ProductService
-ShoppingCartService --> InventoryService
-ShoppingCartRepository --> ShoppingCart
-CartItemRepository --> CartItem
-ShoppingCart "1" *-- "many" CartItem
-
-@enduml
+    ProductController --> ProductService
+    ProductService --> ProductRepository
+    ProductRepository --> Product
+    
+    ShoppingCartController --> ShoppingCartService
+    ShoppingCartService --> ShoppingCartRepository
+    ShoppingCartService --> CartItemRepository
+    ShoppingCartService --> ProductRepository
+    ShoppingCartRepository --> ShoppingCart
+    CartItemRepository --> CartItem
+    ShoppingCart "1" --> "*" CartItem
+    CartItem --> Product : references
 ```
 
 ### 2.2 Entity Relationship Diagram
 
-```plantuml
-@startuml
+```mermaid
+erDiagram
+    PRODUCTS {
+        BIGINT id PK
+        VARCHAR name
+        TEXT description
+        DECIMAL price
+        VARCHAR category
+        INTEGER stock_quantity
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
 
-entity "PRODUCTS" as products {
-  * id : BIGINT <<PK>>
-  --
-  * name : VARCHAR(255)
-  description : TEXT
-  * price : DECIMAL(10,2)
-  category : VARCHAR(100)
-  image_url : VARCHAR(500)
-  created_at : TIMESTAMP
-  updated_at : TIMESTAMP
-}
+    SHOPPING_CARTS {
+        BIGINT id PK
+        BIGINT user_id UK
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
 
-entity "INVENTORY" as inventory {
-  * id : BIGINT <<PK>>
-  --
-  * product_id : BIGINT <<FK>>
-  * quantity : INTEGER
-  reserved_quantity : INTEGER
-  last_updated : TIMESTAMP
-}
+    CART_ITEMS {
+        BIGINT id PK
+        BIGINT cart_id FK
+        BIGINT product_id FK
+        VARCHAR product_name
+        DECIMAL product_price
+        INTEGER quantity
+        DECIMAL subtotal
+    }
 
-entity "ORDERS" as orders {
-  * id : BIGINT <<PK>>
-  --
-  * user_id : BIGINT
-  * order_date : TIMESTAMP
-  * status : VARCHAR(50)
-  * total_amount : DECIMAL(10,2)
-  shipping_address : TEXT
-}
-
-entity "ORDER_ITEMS" as order_items {
-  * id : BIGINT <<PK>>
-  --
-  * order_id : BIGINT <<FK>>
-  * product_id : BIGINT <<FK>>
-  * quantity : INTEGER
-  * price : DECIMAL(10,2)
-  * subtotal : DECIMAL(10,2)
-}
-
-entity "SHOPPING_CARTS" as shopping_carts {
-  * id : BIGINT <<PK>>
-  --
-  * user_id : BIGINT <<UNIQUE>>
-  created_at : TIMESTAMP
-  updated_at : TIMESTAMP
-}
-
-entity "CART_ITEMS" as cart_items {
-  * id : BIGINT <<PK>>
-  --
-  * cart_id : BIGINT <<FK>>
-  * product_id : BIGINT <<FK>>
-  * quantity : INTEGER
-  * price : DECIMAL(10,2)
-  added_at : TIMESTAMP
-}
-
-products ||--|| inventory : "has"
-orders ||--o{ order_items : "contains"
-products ||--o{ order_items : "referenced in"
-shopping_carts ||--o{ cart_items : "contains"
-products ||--o{ cart_items : "referenced in"
-
-@enduml
+    SHOPPING_CARTS ||--o{ CART_ITEMS : contains
+    PRODUCTS ||--o{ CART_ITEMS : referenced_by
 ```
 
 ---
 
 ## 3. Sequence Diagrams
 
-### 3.1 Create Product Flow
+### 3.1 Get All Products
 
-```plantuml
-@startuml
-actor Client
-participant ProductController
-participant ProductService
-participant ProductRepository
-participant InventoryService
-participant InventoryRepository
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
 
-Client -> ProductController: POST /api/products
-activate ProductController
-
-ProductController -> ProductService: createProduct(productDTO)
-activate ProductService
-
-ProductService -> ProductRepository: save(product)
-activate ProductRepository
-ProductRepository --> ProductService: savedProduct
-deactivate ProductRepository
-
-ProductService -> InventoryService: createInventory(productId)
-activate InventoryService
-
-InventoryService -> InventoryRepository: save(inventory)
-activate InventoryRepository
-InventoryRepository --> InventoryService: savedInventory
-deactivate InventoryRepository
-
-InventoryService --> ProductService: inventory
-deactivate InventoryService
-
-ProductService --> ProductController: product
-deactivate ProductService
-
-ProductController --> Client: 201 Created (ProductDTO)
-deactivate ProductController
-@enduml
+    Client->>ProductController: GET /api/products
+    ProductController->>ProductService: getAllProducts()
+    ProductService->>ProductRepository: findAll()
+    ProductRepository->>Database: SELECT * FROM products
+    Database-->>ProductRepository: Product Records
+    ProductRepository-->>ProductService: List<Product>
+    ProductService-->>ProductController: List<Product>
+    ProductController-->>Client: 200 OK (Product List)
 ```
 
-### 3.2 Get Product Flow
+### 3.2 Get Product By ID
 
-```plantuml
-@startuml
-actor Client
-participant ProductController
-participant ProductService
-participant ProductRepository
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
 
-Client -> ProductController: GET /api/products/{id}
-activate ProductController
-
-ProductController -> ProductService: getProductById(id)
-activate ProductService
-
-ProductService -> ProductRepository: findById(id)
-activate ProductRepository
-ProductRepository --> ProductService: Optional<Product>
-deactivate ProductRepository
-
-alt Product Found
-    ProductService --> ProductController: product
-    ProductController --> Client: 200 OK (ProductDTO)
-else Product Not Found
-    ProductService --> ProductController: throw ProductNotFoundException
-    ProductController --> Client: 404 Not Found
-end
-
-deactivate ProductService
-deactivate ProductController
-@enduml
-```
-
-### 3.3 Update Inventory Flow
-
-```plantuml
-@startuml
-actor Client
-participant InventoryController
-participant InventoryService
-participant InventoryRepository
-
-Client -> InventoryController: PUT /api/inventory/{productId}
-activate InventoryController
-
-InventoryController -> InventoryService: updateStock(productId, quantity)
-activate InventoryService
-
-InventoryService -> InventoryRepository: findByProductId(productId)
-activate InventoryRepository
-InventoryRepository --> InventoryService: Optional<Inventory>
-deactivate InventoryRepository
-
-alt Inventory Found
-    InventoryService -> InventoryService: updateQuantity(quantity)
-    InventoryService -> InventoryRepository: save(inventory)
-    activate InventoryRepository
-    InventoryRepository --> InventoryService: updatedInventory
-    deactivate InventoryRepository
-    InventoryService --> InventoryController: inventory
-    InventoryController --> Client: 200 OK (InventoryDTO)
-else Inventory Not Found
-    InventoryService --> InventoryController: throw InventoryNotFoundException
-    InventoryController --> Client: 404 Not Found
-end
-
-deactivate InventoryService
-deactivate InventoryController
-@enduml
-```
-
-### 3.4 Create Order Flow
-
-```plantuml
-@startuml
-actor Client
-participant OrderController
-participant OrderService
-participant InventoryService
-participant ProductService
-participant OrderRepository
-participant OrderItemRepository
-
-Client -> OrderController: POST /api/orders
-activate OrderController
-
-OrderController -> OrderService: createOrder(orderDTO)
-activate OrderService
-
-loop for each item in order
-    OrderService -> ProductService: getProductById(productId)
-    activate ProductService
-    ProductService --> OrderService: product
-    deactivate ProductService
+    Client->>ProductController: GET /api/products/{id}
+    ProductController->>ProductService: getProductById(id)
+    ProductService->>ProductRepository: findById(id)
+    ProductRepository->>Database: SELECT * FROM products WHERE id = ?
     
-    OrderService -> InventoryService: checkAvailability(productId, quantity)
-    activate InventoryService
-    InventoryService --> OrderService: isAvailable
-    deactivate InventoryService
-    
-    alt Stock Available
-        OrderService -> InventoryService: reserveStock(productId, quantity)
-        activate InventoryService
-        InventoryService --> OrderService: success
-        deactivate InventoryService
-    else Stock Unavailable
-        OrderService --> OrderController: throw InsufficientStockException
-        OrderController --> Client: 400 Bad Request
+    alt Product Found
+        Database-->>ProductRepository: Product Record
+        ProductRepository-->>ProductService: Optional<Product>
+        ProductService-->>ProductController: Product
+        ProductController-->>Client: 200 OK (Product)
+    else Product Not Found
+        Database-->>ProductRepository: Empty Result
+        ProductRepository-->>ProductService: Optional.empty()
+        ProductService-->>ProductController: null
+        ProductController-->>Client: 404 Not Found
     end
-end
-
-OrderService -> OrderRepository: save(order)
-activate OrderRepository
-OrderRepository --> OrderService: savedOrder
-deactivate OrderRepository
-
-loop for each item
-    OrderService -> OrderItemRepository: save(orderItem)
-    activate OrderItemRepository
-    OrderItemRepository --> OrderService: savedOrderItem
-    deactivate OrderItemRepository
-end
-
-OrderService --> OrderController: order
-deactivate OrderService
-
-OrderController --> Client: 201 Created (OrderDTO)
-deactivate OrderController
-@enduml
 ```
 
-### 3.5 Cancel Order Flow
+### 3.3 Create Product
 
-```plantuml
-@startuml
-actor Client
-participant OrderController
-participant OrderService
-participant OrderRepository
-participant OrderItemRepository
-participant InventoryService
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
 
-Client -> OrderController: DELETE /api/orders/{id}
-activate OrderController
-
-OrderController -> OrderService: cancelOrder(orderId)
-activate OrderService
-
-OrderService -> OrderRepository: findById(orderId)
-activate OrderRepository
-OrderRepository --> OrderService: Optional<Order>
-deactivate OrderRepository
-
-alt Order Found and Cancellable
-    OrderService -> OrderItemRepository: findByOrderId(orderId)
-    activate OrderItemRepository
-    OrderItemRepository --> OrderService: List<OrderItem>
-    deactivate OrderItemRepository
+    Client->>ProductController: POST /api/products (ProductDTO)
+    ProductController->>ProductController: Validate Request
     
-    loop for each order item
-        OrderService -> InventoryService: releaseStock(productId, quantity)
-        activate InventoryService
-        InventoryService --> OrderService: success
-        deactivate InventoryService
+    alt Valid Request
+        ProductController->>ProductService: createProduct(product)
+        ProductService->>ProductService: Set timestamps
+        ProductService->>ProductRepository: save(product)
+        ProductRepository->>Database: INSERT INTO products
+        Database-->>ProductRepository: Generated ID
+        ProductRepository-->>ProductService: Saved Product
+        ProductService-->>ProductController: Product
+        ProductController-->>Client: 201 Created (Product)
+    else Invalid Request
+        ProductController-->>Client: 400 Bad Request
     end
-    
-    OrderService -> OrderService: setStatus(CANCELLED)
-    OrderService -> OrderRepository: save(order)
-    activate OrderRepository
-    OrderRepository --> OrderService: updatedOrder
-    deactivate OrderRepository
-    
-    OrderService --> OrderController: success
-    OrderController --> Client: 200 OK
-else Order Not Found or Not Cancellable
-    OrderService --> OrderController: throw Exception
-    OrderController --> Client: 400/404 Error
-end
-
-deactivate OrderService
-deactivate OrderController
-@enduml
 ```
 
-### 3.6 Search Products Flow
+### 3.4 Update Product
 
-```plantuml
-@startuml
-actor Client
-participant ProductController
-participant ProductService
-participant ProductRepository
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
 
-Client -> ProductController: GET /api/products/search?query=laptop
-activate ProductController
-
-ProductController -> ProductService: searchProducts("laptop")
-activate ProductService
-
-ProductService -> ProductRepository: findByNameContaining("laptop")
-activate ProductRepository
-ProductRepository --> ProductService: List<Product>
-deactivate ProductRepository
-
-ProductService --> ProductController: List<Product>
-deactivate ProductService
-
-ProductController --> Client: 200 OK (List<ProductDTO>)
-deactivate ProductController
-@enduml
-```
-
-### 3.7 Check Stock Availability Flow
-
-```plantuml
-@startuml
-actor Client
-participant InventoryController
-participant InventoryService
-participant InventoryRepository
-
-Client -> InventoryController: GET /api/inventory/{productId}/availability?quantity=5
-activate InventoryController
-
-InventoryController -> InventoryService: checkAvailability(productId, 5)
-activate InventoryService
-
-InventoryService -> InventoryRepository: findByProductId(productId)
-activate InventoryRepository
-InventoryRepository --> InventoryService: Optional<Inventory>
-deactivate InventoryRepository
-
-alt Inventory Found
-    InventoryService -> InventoryService: calculate available = quantity - reservedQuantity
-    alt available >= requested
-        InventoryService --> InventoryController: true
-        InventoryController --> Client: 200 OK {"available": true}
-    else available < requested
-        InventoryService --> InventoryController: false
-        InventoryController --> Client: 200 OK {"available": false}
+    Client->>ProductController: PUT /api/products/{id} (ProductDTO)
+    ProductController->>ProductService: updateProduct(id, product)
+    ProductService->>ProductRepository: findById(id)
+    ProductRepository->>Database: SELECT * FROM products WHERE id = ?
+    
+    alt Product Exists
+        Database-->>ProductRepository: Product Record
+        ProductRepository-->>ProductService: Optional<Product>
+        ProductService->>ProductService: Update fields & timestamp
+        ProductService->>ProductRepository: save(updatedProduct)
+        ProductRepository->>Database: UPDATE products SET ...
+        Database-->>ProductRepository: Success
+        ProductRepository-->>ProductService: Updated Product
+        ProductService-->>ProductController: Product
+        ProductController-->>Client: 200 OK (Product)
+    else Product Not Found
+        Database-->>ProductRepository: Empty Result
+        ProductRepository-->>ProductService: Optional.empty()
+        ProductService-->>ProductController: null
+        ProductController-->>Client: 404 Not Found
     end
-else Inventory Not Found
-    InventoryService --> InventoryController: false
-    InventoryController --> Client: 200 OK {"available": false}
-end
-
-deactivate InventoryService
-deactivate InventoryController
-@enduml
 ```
 
-### 3.8 Add Item to Cart Flow
+### 3.5 Delete Product
 
-```plantuml
-@startuml
-actor Client
-participant ShoppingCartController
-participant ShoppingCartService
-participant ShoppingCartRepository
-participant CartItemRepository
-participant ProductService
-participant InventoryService
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
 
-Client -> ShoppingCartController: POST /api/cart/{userId}/items
-activate ShoppingCartController
+    Client->>ProductController: DELETE /api/products/{id}
+    ProductController->>ProductService: deleteProduct(id)
+    ProductService->>ProductRepository: findById(id)
+    ProductRepository->>Database: SELECT * FROM products WHERE id = ?
+    
+    alt Product Exists
+        Database-->>ProductRepository: Product Record
+        ProductRepository-->>ProductService: Optional<Product>
+        ProductService->>ProductRepository: deleteById(id)
+        ProductRepository->>Database: DELETE FROM products WHERE id = ?
+        Database-->>ProductRepository: Success
+        ProductRepository-->>ProductService: void
+        ProductService-->>ProductController: void
+        ProductController-->>Client: 204 No Content
+    else Product Not Found
+        Database-->>ProductRepository: Empty Result
+        ProductRepository-->>ProductService: Optional.empty()
+        ProductService-->>ProductController: Exception
+        ProductController-->>Client: 404 Not Found
+    end
+```
 
-ShoppingCartController -> ShoppingCartService: addItemToCart(userId, productId, quantity)
-activate ShoppingCartService
+### 3.6 Get Products By Category
 
-ShoppingCartService -> ProductService: getProductById(productId)
-activate ProductService
-ProductService --> ShoppingCartService: product
-deactivate ProductService
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
 
-ShoppingCartService -> InventoryService: checkAvailability(productId, quantity)
-activate InventoryService
-InventoryService --> ShoppingCartService: isAvailable
-deactivate InventoryService
+    Client->>ProductController: GET /api/products/category/{category}
+    ProductController->>ProductService: getProductsByCategory(category)
+    ProductService->>ProductRepository: findByCategory(category)
+    ProductRepository->>Database: SELECT * FROM products WHERE category = ?
+    Database-->>ProductRepository: Product Records
+    ProductRepository-->>ProductService: List<Product>
+    ProductService-->>ProductController: List<Product>
+    ProductController-->>Client: 200 OK (Product List)
+```
 
-alt Stock Available
-    ShoppingCartService -> ShoppingCartRepository: findByUserId(userId)
-    activate ShoppingCartRepository
-    ShoppingCartRepository --> ShoppingCartService: Optional<ShoppingCart>
-    deactivate ShoppingCartRepository
+### 3.7 Search Products
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ProductController
+    participant ProductService
+    participant ProductRepository
+    participant Database
+
+    Client->>ProductController: GET /api/products/search?keyword={keyword}
+    ProductController->>ProductService: searchProducts(keyword)
+    ProductService->>ProductRepository: searchByNameOrDescription(keyword)
+    ProductRepository->>Database: SELECT * FROM products WHERE name LIKE ? OR description LIKE ?
+    Database-->>ProductRepository: Product Records
+    ProductRepository-->>ProductService: List<Product>
+    ProductService-->>ProductController: List<Product>
+    ProductController-->>Client: 200 OK (Product List)
+```
+
+### 3.8 Add Product to Cart
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant ShoppingCartRepository
+    participant CartItemRepository
+    participant ProductRepository
+    participant Database
+
+    Client->>ShoppingCartController: POST /api/cart/{userId}/items
+    ShoppingCartController->>ShoppingCartService: addProductToCart(userId, productId, quantity)
+    ShoppingCartService->>ProductRepository: findById(productId)
+    ProductRepository->>Database: SELECT * FROM products WHERE id = ?
+    
+    alt Product Exists
+        Database-->>ProductRepository: Product Record
+        ProductRepository-->>ShoppingCartService: Optional<Product>
+        ShoppingCartService->>ShoppingCartRepository: findByUserId(userId)
+        ShoppingCartRepository->>Database: SELECT * FROM shopping_carts WHERE user_id = ?
+        
+        alt Cart Exists
+            Database-->>ShoppingCartRepository: Cart Record
+            ShoppingCartRepository-->>ShoppingCartService: Optional<ShoppingCart>
+        else Cart Not Exists
+            Database-->>ShoppingCartRepository: Empty Result
+            ShoppingCartRepository-->>ShoppingCartService: Optional.empty()
+            ShoppingCartService->>ShoppingCartService: Create new cart
+            ShoppingCartService->>ShoppingCartRepository: save(newCart)
+            ShoppingCartRepository->>Database: INSERT INTO shopping_carts
+        end
+        
+        ShoppingCartService->>ShoppingCartService: Create CartItem
+        ShoppingCartService->>CartItemRepository: save(cartItem)
+        CartItemRepository->>Database: INSERT INTO cart_items
+        Database-->>CartItemRepository: Success
+        CartItemRepository-->>ShoppingCartService: CartItem
+        ShoppingCartService-->>ShoppingCartController: ShoppingCart
+        ShoppingCartController-->>Client: 200 OK (Cart)
+    else Product Not Found
+        Database-->>ProductRepository: Empty Result
+        ProductRepository-->>ShoppingCartService: Optional.empty()
+        ShoppingCartService-->>ShoppingCartController: Exception
+        ShoppingCartController-->>Client: 404 Not Found
+    end
+```
+
+### 3.9 View Shopping Cart
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant ShoppingCartRepository
+    participant CartItemRepository
+    participant Database
+
+    Client->>ShoppingCartController: GET /api/cart/{userId}
+    ShoppingCartController->>ShoppingCartService: getCartByUserId(userId)
+    ShoppingCartService->>ShoppingCartRepository: findByUserId(userId)
+    ShoppingCartRepository->>Database: SELECT * FROM shopping_carts WHERE user_id = ?
     
     alt Cart Exists
-        ShoppingCartService -> CartItemRepository: findByCartIdAndProductId(cartId, productId)
-        activate CartItemRepository
-        CartItemRepository --> ShoppingCartService: Optional<CartItem>
-        deactivate CartItemRepository
-        
-        alt Item Exists in Cart
-            ShoppingCartService -> ShoppingCartService: updateQuantity(existingQty + newQty)
-        else Item Not in Cart
-            ShoppingCartService -> ShoppingCartService: createNewCartItem()
-        end
-    else Cart Does Not Exist
-        ShoppingCartService -> ShoppingCartRepository: save(newCart)
-        activate ShoppingCartRepository
-        ShoppingCartRepository --> ShoppingCartService: savedCart
-        deactivate ShoppingCartRepository
-        
-        ShoppingCartService -> ShoppingCartService: createNewCartItem()
+        Database-->>ShoppingCartRepository: Cart Record
+        ShoppingCartRepository-->>ShoppingCartService: Optional<ShoppingCart>
+        ShoppingCartService->>CartItemRepository: findByCartId(cartId)
+        CartItemRepository->>Database: SELECT * FROM cart_items WHERE cart_id = ?
+        Database-->>CartItemRepository: CartItem Records
+        CartItemRepository-->>ShoppingCartService: List<CartItem>
+        ShoppingCartService->>ShoppingCartService: Calculate total
+        ShoppingCartService-->>ShoppingCartController: ShoppingCart with items
+        ShoppingCartController-->>Client: 200 OK (Cart)
+    else Cart Not Found
+        Database-->>ShoppingCartRepository: Empty Result
+        ShoppingCartRepository-->>ShoppingCartService: Optional.empty()
+        ShoppingCartService-->>ShoppingCartController: Empty Cart
+        ShoppingCartController-->>Client: 200 OK (Empty Cart)
     end
-    
-    ShoppingCartService -> CartItemRepository: save(cartItem)
-    activate CartItemRepository
-    CartItemRepository --> ShoppingCartService: savedCartItem
-    deactivate CartItemRepository
-    
-    ShoppingCartService --> ShoppingCartController: shoppingCart
-    ShoppingCartController --> Client: 200 OK (ShoppingCartDTO)
-else Stock Unavailable
-    ShoppingCartService --> ShoppingCartController: throw InsufficientStockException
-    ShoppingCartController --> Client: 400 Bad Request
-end
-
-deactivate ShoppingCartService
-deactivate ShoppingCartController
-@enduml
 ```
 
-### 3.9 Update Cart Item Quantity Flow
+### 3.10 Update Cart Item Quantity
 
-```plantuml
-@startuml
-actor Client
-participant ShoppingCartController
-participant ShoppingCartService
-participant CartItemRepository
-participant InventoryService
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant CartItemRepository
+    participant Database
 
-Client -> ShoppingCartController: PUT /api/cart/{userId}/items/{itemId}
-activate ShoppingCartController
-
-ShoppingCartController -> ShoppingCartService: updateCartItemQuantity(userId, itemId, newQuantity)
-activate ShoppingCartService
-
-ShoppingCartService -> CartItemRepository: findById(itemId)
-activate CartItemRepository
-CartItemRepository --> ShoppingCartService: Optional<CartItem>
-deactivate CartItemRepository
-
-alt Item Found
-    ShoppingCartService -> InventoryService: checkAvailability(productId, newQuantity)
-    activate InventoryService
-    InventoryService --> ShoppingCartService: isAvailable
-    deactivate InventoryService
+    Client->>ShoppingCartController: PUT /api/cart/{userId}/items/{itemId}
+    ShoppingCartController->>ShoppingCartService: updateCartItemQuantity(userId, itemId, quantity)
+    ShoppingCartService->>CartItemRepository: findById(itemId)
+    CartItemRepository->>Database: SELECT * FROM cart_items WHERE id = ?
     
-    alt Stock Available
-        ShoppingCartService -> ShoppingCartService: cartItem.updateQuantity(newQuantity)
-        ShoppingCartService -> CartItemRepository: save(cartItem)
-        activate CartItemRepository
-        CartItemRepository --> ShoppingCartService: updatedCartItem
-        deactivate CartItemRepository
-        
-        ShoppingCartService --> ShoppingCartController: shoppingCart
-        ShoppingCartController --> Client: 200 OK (ShoppingCartDTO)
-    else Stock Unavailable
-        ShoppingCartService --> ShoppingCartController: throw InsufficientStockException
-        ShoppingCartController --> Client: 400 Bad Request
+    alt Item Exists
+        Database-->>CartItemRepository: CartItem Record
+        CartItemRepository-->>ShoppingCartService: Optional<CartItem>
+        ShoppingCartService->>ShoppingCartService: Update quantity & subtotal
+        ShoppingCartService->>CartItemRepository: save(updatedItem)
+        CartItemRepository->>Database: UPDATE cart_items SET quantity = ?, subtotal = ?
+        Database-->>CartItemRepository: Success
+        CartItemRepository-->>ShoppingCartService: Updated CartItem
+        ShoppingCartService-->>ShoppingCartController: ShoppingCart
+        ShoppingCartController-->>Client: 200 OK (Cart)
+    else Item Not Found
+        Database-->>CartItemRepository: Empty Result
+        CartItemRepository-->>ShoppingCartService: Optional.empty()
+        ShoppingCartService-->>ShoppingCartController: Exception
+        ShoppingCartController-->>Client: 404 Not Found
     end
-else Item Not Found
-    ShoppingCartService --> ShoppingCartController: throw CartItemNotFoundException
-    ShoppingCartController --> Client: 404 Not Found
-end
-
-deactivate ShoppingCartService
-deactivate ShoppingCartController
-@enduml
 ```
 
-### 3.10 Remove Item from Cart Flow
+### 3.11 Remove Item from Cart
 
-```plantuml
-@startuml
-actor Client
-participant ShoppingCartController
-participant ShoppingCartService
-participant CartItemRepository
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant CartItemRepository
+    participant Database
 
-Client -> ShoppingCartController: DELETE /api/cart/{userId}/items/{itemId}
-activate ShoppingCartController
-
-ShoppingCartController -> ShoppingCartService: removeItemFromCart(userId, itemId)
-activate ShoppingCartService
-
-ShoppingCartService -> CartItemRepository: findById(itemId)
-activate CartItemRepository
-CartItemRepository --> ShoppingCartService: Optional<CartItem>
-deactivate CartItemRepository
-
-alt Item Found and Belongs to User's Cart
-    ShoppingCartService -> CartItemRepository: deleteById(itemId)
-    activate CartItemRepository
-    CartItemRepository --> ShoppingCartService: success
-    deactivate CartItemRepository
+    Client->>ShoppingCartController: DELETE /api/cart/{userId}/items/{itemId}
+    ShoppingCartController->>ShoppingCartService: removeItemFromCart(userId, itemId)
+    ShoppingCartService->>CartItemRepository: findById(itemId)
+    CartItemRepository->>Database: SELECT * FROM cart_items WHERE id = ?
     
-    ShoppingCartService --> ShoppingCartController: success
-    ShoppingCartController --> Client: 204 No Content
-else Item Not Found or Unauthorized
-    ShoppingCartService --> ShoppingCartController: throw Exception
-    ShoppingCartController --> Client: 404 Not Found / 403 Forbidden
-end
-
-deactivate ShoppingCartService
-deactivate ShoppingCartController
-@enduml
-```
-
-### 3.11 Get Shopping Cart Flow
-
-```plantuml
-@startuml
-actor Client
-participant ShoppingCartController
-participant ShoppingCartService
-participant ShoppingCartRepository
-participant CartItemRepository
-
-Client -> ShoppingCartController: GET /api/cart/{userId}
-activate ShoppingCartController
-
-ShoppingCartController -> ShoppingCartService: getCartByUserId(userId)
-activate ShoppingCartService
-
-ShoppingCartService -> ShoppingCartRepository: findByUserId(userId)
-activate ShoppingCartRepository
-ShoppingCartRepository --> ShoppingCartService: Optional<ShoppingCart>
-deactivate ShoppingCartRepository
-
-alt Cart Found
-    ShoppingCartService -> CartItemRepository: findByCartId(cartId)
-    activate CartItemRepository
-    CartItemRepository --> ShoppingCartService: List<CartItem>
-    deactivate CartItemRepository
-    
-    ShoppingCartService -> ShoppingCartService: calculateCartTotal()
-    ShoppingCartService --> ShoppingCartController: shoppingCart
-    ShoppingCartController --> Client: 200 OK (ShoppingCartDTO)
-else Cart Not Found
-    ShoppingCartService -> ShoppingCartService: createEmptyCart(userId)
-    ShoppingCartService -> ShoppingCartRepository: save(newCart)
-    activate ShoppingCartRepository
-    ShoppingCartRepository --> ShoppingCartService: savedCart
-    deactivate ShoppingCartRepository
-    
-    ShoppingCartService --> ShoppingCartController: emptyCart
-    ShoppingCartController --> Client: 200 OK (EmptyCartDTO)
-end
-
-deactivate ShoppingCartService
-deactivate ShoppingCartController
-@enduml
+    alt Item Exists
+        Database-->>CartItemRepository: CartItem Record
+        CartItemRepository-->>ShoppingCartService: Optional<CartItem>
+        ShoppingCartService->>CartItemRepository: deleteById(itemId)
+        CartItemRepository->>Database: DELETE FROM cart_items WHERE id = ?
+        Database-->>CartItemRepository: Success
+        CartItemRepository-->>ShoppingCartService: void
+        ShoppingCartService-->>ShoppingCartController: void
+        ShoppingCartController-->>Client: 204 No Content
+    else Item Not Found
+        Database-->>CartItemRepository: Empty Result
+        CartItemRepository-->>ShoppingCartService: Optional.empty()
+        ShoppingCartService-->>ShoppingCartController: Exception
+        ShoppingCartController-->>Client: 404 Not Found
+    end
 ```
 
 ---
 
-## 4. API Endpoints
+## 4. API Endpoints Summary
 
 ### Product Management Endpoints
 
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|--------------|----------|
-| POST | `/api/products` | Create new product | ProductDTO | 201 Created |
-| GET | `/api/products/{id}` | Get product by ID | - | 200 OK |
-| PUT | `/api/products/{id}` | Update product | ProductDTO | 200 OK |
-| DELETE | `/api/products/{id}` | Delete product | - | 204 No Content |
-| GET | `/api/products` | List all products (paginated) | - | 200 OK |
-| GET | `/api/products/search` | Search products | query param | 200 OK |
-
-### Inventory Management Endpoints
-
-| Method | Endpoint | Description | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| GET | `/api/inventory/{productId}` | Get inventory for product | - | 200 OK |
-| PUT | `/api/inventory/{productId}` | Update stock quantity | InventoryUpdateDTO | 200 OK |
-| GET | `/api/inventory/{productId}/availability` | Check stock availability | quantity param | 200 OK |
-
-### Order Management Endpoints
-
-| Method | Endpoint | Description | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| POST | `/api/orders` | Create new order | OrderDTO | 201 Created |
-| GET | `/api/orders/{id}` | Get order by ID | - | 200 OK |
-| PUT | `/api/orders/{id}/status` | Update order status | StatusUpdateDTO | 200 OK |
-| DELETE | `/api/orders/{id}` | Cancel order | - | 200 OK |
-| GET | `/api/orders/user/{userId}` | Get user's orders | - | 200 OK |
+| GET | /api/products | Get all products | None | 200 OK - List of products |
+| GET | /api/products/{id} | Get product by ID | None | 200 OK - Product / 404 Not Found |
+| POST | /api/products | Create new product | ProductDTO | 201 Created - Product / 400 Bad Request |
+| PUT | /api/products/{id} | Update product | ProductDTO | 200 OK - Product / 404 Not Found |
+| DELETE | /api/products/{id} | Delete product | None | 204 No Content / 404 Not Found |
+| GET | /api/products/category/{category} | Get products by category | None | 200 OK - List of products |
+| GET | /api/products/search?keyword={keyword} | Search products | None | 200 OK - List of products |
 
 ### Shopping Cart Management Endpoints
 
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|--------------|----------|
-| GET | `/api/cart/{userId}` | Get user's shopping cart | - | 200 OK |
-| POST | `/api/cart/{userId}/items` | Add item to cart | CartItemDTO | 200 OK |
-| PUT | `/api/cart/{userId}/items/{itemId}` | Update item quantity | QuantityUpdateDTO | 200 OK |
-| DELETE | `/api/cart/{userId}/items/{itemId}` | Remove item from cart | - | 204 No Content |
-| DELETE | `/api/cart/{userId}` | Clear entire cart | - | 204 No Content |
+| POST | /api/cart/{userId}/items | Add product to cart | {"productId": Long, "quantity": Integer} | 200 OK - Cart / 404 Not Found |
+| GET | /api/cart/{userId} | View shopping cart | None | 200 OK - Cart with items |
+| PUT | /api/cart/{userId}/items/{itemId} | Update cart item quantity | {"quantity": Integer} | 200 OK - Cart / 404 Not Found |
+| DELETE | /api/cart/{userId}/items/{itemId} | Remove item from cart | None | 204 No Content / 404 Not Found |
+| DELETE | /api/cart/{userId} | Clear cart | None | 204 No Content |
+| GET | /api/cart/{userId}/total | Get cart total | None | 200 OK - {"total": BigDecimal} |
 
 ---
 
 ## 5. Database Schema
 
 ### Products Table
+
 ```sql
 CREATE TABLE products (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     price DECIMAL(10, 2) NOT NULL,
-    category VARCHAR(100),
-    image_url VARCHAR(500),
+    category VARCHAR(100) NOT NULL,
+    stock_quantity INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_category (category),
+    INDEX idx_name (name)
 );
-
-CREATE INDEX idx_products_category ON products(category);
-CREATE INDEX idx_products_name ON products(name);
-```
-
-### Inventory Table
-```sql
-CREATE TABLE inventory (
-    id BIGSERIAL PRIMARY KEY,
-    product_id BIGINT NOT NULL UNIQUE,
-    quantity INTEGER NOT NULL DEFAULT 0,
-    reserved_quantity INTEGER NOT NULL DEFAULT 0,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_inventory_product_id ON inventory(product_id);
-```
-
-### Orders Table
-```sql
-CREATE TABLE orders (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL,
-    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status VARCHAR(50) NOT NULL,
-    total_amount DECIMAL(10, 2) NOT NULL,
-    shipping_address TEXT NOT NULL
-);
-
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_orders_status ON orders(status);
-```
-
-### Order Items Table
-```sql
-CREATE TABLE order_items (
-    id BIGSERIAL PRIMARY KEY,
-    order_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
-    quantity INTEGER NOT NULL,
-    price DECIMAL(10, 2) NOT NULL,
-    subtotal DECIMAL(10, 2) NOT NULL,
-    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id)
-);
-
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
 ```
 
 ### Shopping Carts Table
+
 ```sql
 CREATE TABLE shopping_carts (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id)
 );
-
-CREATE INDEX idx_shopping_carts_user_id ON shopping_carts(user_id);
 ```
 
 ### Cart Items Table
+
 ```sql
 CREATE TABLE cart_items (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
     cart_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
-    quantity INTEGER NOT NULL,
-    price DECIMAL(10, 2) NOT NULL,
-    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    product_name VARCHAR(255) NOT NULL,
+    product_price DECIMAL(10, 2) NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    subtotal DECIMAL(10, 2) NOT NULL,
     FOREIGN KEY (cart_id) REFERENCES shopping_carts(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id),
-    UNIQUE(cart_id, product_id)
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    INDEX idx_cart_id (cart_id),
+    INDEX idx_product_id (product_id)
 );
-
-CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
-CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
 ```
 
 ---
 
-## 6. Data Transfer Objects (DTOs)
+## 6. Technology Stack Details
 
-### ProductDTO
-```java
-public class ProductDTO {
-    private Long id;
-    private String name;
-    private String description;
-    private BigDecimal price;
-    private String category;
-    private String imageUrl;
-    private Integer availableQuantity;
-}
-```
+### Backend
+- **Spring Boot 3.x**: Main framework
+- **Spring Data JPA**: Data access layer
+- **Spring Web**: REST API development
+- **Hibernate**: ORM implementation
+- **Lombok**: Reduce boilerplate code
+- **MapStruct**: DTO mapping
+- **Bean Validation**: Request validation
 
-### OrderDTO
-```java
-public class OrderDTO {
-    private Long id;
-    private Long userId;
-    private LocalDateTime orderDate;
-    private String status;
-    private BigDecimal totalAmount;
-    private String shippingAddress;
-    private List<OrderItemDTO> items;
-}
-```
+### Database
+- **PostgreSQL/MySQL**: Primary database
+- **Flyway/Liquibase**: Database migration
 
-### OrderItemDTO
-```java
-public class OrderItemDTO {
-    private Long productId;
-    private String productName;
-    private Integer quantity;
-    private BigDecimal price;
-    private BigDecimal subtotal;
-}
-```
-
-### InventoryDTO
-```java
-public class InventoryDTO {
-    private Long productId;
-    private Integer quantity;
-    private Integer reservedQuantity;
-    private Integer availableQuantity;
-    private LocalDateTime lastUpdated;
-}
-```
+### Build & Dependencies
+- **Maven/Gradle**: Build automation
+- **JUnit 5**: Unit testing
+- **Mockito**: Mocking framework
+- **Spring Boot Test**: Integration testing
 
 ---
 
-## 7. Design Patterns Used
+## 7. Design Patterns
 
-### 7.1 Layered Architecture
+### Layered Architecture
 - **Controller Layer**: Handles HTTP requests and responses
 - **Service Layer**: Contains business logic
-- **Repository Layer**: Manages data persistence
-- **Entity Layer**: Represents database tables
+- **Repository Layer**: Data access abstraction
+- **Entity Layer**: Domain models
 
-### 7.2 Repository Pattern
+### Repository Pattern
 - Abstracts data access logic
-- Provides a collection-like interface for accessing domain objects
-- Implemented using Spring Data JPA
+- Provides clean separation between business logic and data access
+- Uses Spring Data JPA for implementation
 
-### 7.3 Service Pattern
-- Encapsulates business logic
-- Coordinates between controllers and repositories
-- Handles transaction management
+### DTO Pattern
+- Separates internal domain models from API contracts
+- Provides data transfer objects for API requests/responses
+- Prevents over-exposure of entity details
 
-### 7.4 DTO Pattern
-- Separates internal domain models from external API contracts
-- Reduces coupling between layers
-- Provides data validation and transformation
+### Dependency Injection
+- Constructor-based injection for required dependencies
+- Promotes loose coupling and testability
 
-### 7.5 Dependency Injection
-- Uses Spring's IoC container
-- Promotes loose coupling
-- Facilitates testing through mock injection
-
-### 7.6 Aggregate Pattern
-- ShoppingCart acts as an aggregate root managing CartItems
-- Ensures consistency boundaries within the cart domain
-- All cart item modifications go through the ShoppingCart aggregate
-- Maintains invariants such as quantity validation and total calculation
+### Aggregate Pattern
+- ShoppingCart acts as an aggregate root
+- CartItems are managed through the ShoppingCart aggregate
+- Ensures consistency of cart operations
+- Encapsulates business rules for cart management
 
 ---
 
-## 8. Key Implementation Details
+## 8. Key Features
 
-### 8.1 Transaction Management
-- Use `@Transactional` annotation for methods that modify data
-- Order creation and inventory updates must be atomic
-- Rollback on any failure during order processing
+### Product Management
+1. **CRUD Operations**: Complete create, read, update, delete functionality
+2. **Category Filtering**: Filter products by category
+3. **Search Functionality**: Search products by name or description
+4. **Stock Management**: Track product inventory
+5. **Validation**: Input validation for all operations
+6. **Error Handling**: Comprehensive error responses
 
-### 8.2 Inventory Reservation
-- When order is created, stock is reserved (not immediately deducted)
-- Reserved quantity is tracked separately
-- Stock is released if order is cancelled
-- Actual deduction happens when order is confirmed
-
-### 8.3 Error Handling
-- Custom exceptions for domain-specific errors
-- Global exception handler using `@ControllerAdvice`
-- Proper HTTP status codes for different error scenarios
-
-### 8.4 Validation
-- Input validation using Bean Validation annotations
-- Business rule validation in service layer
-- Database constraints for data integrity
-
-### 8.5 Pagination
-- Use Spring Data's `Pageable` interface
-- Default page size: 20 items
-- Support for sorting by multiple fields
-
-### 8.6 Key Features
-
-#### Product Management
-- CRUD operations for products
-- Category-based filtering
-- Search functionality
-- Image URL storage
-
-#### Inventory Management
-- Real-time stock tracking
-- Reserved quantity management
-- Stock availability checks
-- Automatic inventory updates
-
-#### Order Management
-- Order creation with multiple items
-- Order status tracking
-- Order cancellation with stock release
-- User order history
-
-#### Shopping Cart Management
-- Persistent shopping carts per user
-- Add/update/remove cart items
-- Real-time cart total calculation
-- Stock availability validation before adding items
-- Automatic cart creation for new users
-- Cart item quantity management with inventory checks
+### Shopping Cart Management
+1. **Add to Cart**: Add products to user's shopping cart with specified quantity
+2. **View Cart**: Retrieve complete cart with all items and calculated total
+3. **Update Quantity**: Modify quantity of items in cart with automatic subtotal recalculation
+4. **Remove Items**: Delete individual items from cart
+5. **Clear Cart**: Remove all items from cart
+6. **Cart Persistence**: Maintain cart state across sessions
+7. **Price Snapshot**: Store product price at time of adding to cart
+8. **Automatic Calculations**: Real-time subtotal and total calculations
+9. **Validation**: Quantity and product availability validation
+10. **Cascade Operations**: Automatic cleanup when products are deleted
 
 ---
 
-## 9. Security Considerations
+## 9. Error Handling Strategy
 
-### 9.1 Authentication
-- JWT-based authentication
-- Token validation on protected endpoints
-- User identity verification
+### HTTP Status Codes
+- **200 OK**: Successful GET, PUT operations
+- **201 Created**: Successful POST operations
+- **204 No Content**: Successful DELETE operations
+- **400 Bad Request**: Invalid input data
+- **404 Not Found**: Resource not found
+- **500 Internal Server Error**: Server-side errors
 
-### 9.2 Authorization
-- Role-based access control
-- Users can only access their own orders
-- Admin role for product and inventory management
+### Exception Handling
+- Global exception handler using @ControllerAdvice
+- Custom exceptions for business logic violations
+- Structured error response format
 
-### 9.3 Data Validation
-- Input sanitization
+---
+
+## 10. Security Considerations
+
+### Input Validation
+- Bean Validation annotations on DTOs
+- Custom validators for business rules
 - SQL injection prevention through parameterized queries
-- XSS prevention in API responses
+
+### Data Integrity
+- Foreign key constraints
+- Cascade operations for related entities
+- Transaction management for data consistency
 
 ---
 
-## 10. Performance Optimization
+## 11. Performance Optimization
 
-### 10.1 Database Indexing
+### Database Optimization
 - Indexes on frequently queried columns
-- Composite indexes for multi-column queries
-- Regular index maintenance
+- Efficient query design
+- Connection pooling
 
-### 10.2 Caching Strategy
-- Cache frequently accessed products
-- Cache inventory data with short TTL
-- Invalidate cache on updates
+### Caching Strategy
+- Consider caching for frequently accessed products
+- Cache invalidation on updates
 
-### 10.3 Query Optimization
-- Use pagination for large result sets
-- Avoid N+1 query problems
-- Use appropriate fetch strategies
+### Pagination
+- Implement pagination for large result sets
+- Configurable page size
 
 ---
 
-## 11. Testing Strategy
+## 12. Testing Strategy
 
-### 11.1 Unit Tests
-- Test service layer business logic
-- Mock repository dependencies
-- Test edge cases and error scenarios
+### Unit Tests
+- Service layer business logic
+- Repository custom queries
+- Utility methods
 
-### 11.2 Integration Tests
-- Test controller endpoints
-- Test database interactions
-- Test transaction management
+### Integration Tests
+- Controller endpoints
+- Database operations
+- End-to-end workflows
 
-### 11.3 Test Coverage Goals
+### Test Coverage
 - Minimum 80% code coverage
-- 100% coverage for critical business logic
-- All API endpoints tested
+- Critical path coverage
 
 ---
 
-## 12. Deployment Considerations
+## 13. Deployment Considerations
 
-### 12.1 Environment Configuration
-- Separate configurations for dev, staging, and production
-- Externalized configuration using environment variables
-- Secure storage of sensitive credentials
+### Environment Configuration
+- Separate configurations for dev, test, prod
+- Externalized configuration using application.properties/yml
+- Environment-specific database connections
 
-### 12.2 Database Migration
-- Use Flyway or Liquibase for version control
-- Automated migration on deployment
-- Rollback scripts for each migration
-
-### 12.3 Monitoring and Logging
-- Structured logging using SLF4J
-- Application metrics using Micrometer
-- Health check endpoints
-- Error tracking and alerting
+### Monitoring
+- Application health checks
+- Performance metrics
+- Error logging and tracking
 
 ---
 
-## 13. Future Enhancements
+## 14. Future Enhancements
 
-### 13.1 Planned Features
-- Product reviews and ratings
-- Wishlist functionality
-- Advanced search with filters
-- Recommendation engine
-- Multi-warehouse inventory support
+### Product Management
+1. Product images and media support
+2. Product reviews and ratings
+3. Inventory alerts for low stock
+4. Bulk operations
+5. Product variants (size, color, etc.)
 
-### 13.2 Scalability Improvements
-- Microservices architecture
-- Event-driven communication
-- Distributed caching
-- Database sharding
-
----
-
-## 14. Appendix
-
-### 14.1 Glossary
-- **SKU**: Stock Keeping Unit
-- **DTO**: Data Transfer Object
-- **JPA**: Java Persistence API
-- **REST**: Representational State Transfer
-
-### 14.2 References
-- Spring Boot Documentation
-- Spring Data JPA Documentation
-- PostgreSQL Documentation
-- RESTful API Design Best Practices
+### Shopping Cart Management
+1. Cart expiration and cleanup
+2. Save for later functionality
+3. Cart sharing capabilities
+4. Wishlist integration
+5. Cart abandonment tracking
+6. Promotional code support
+7. Stock validation before checkout
 
 ---
 
-**Document Version**: 1.1  
-**Last Updated**: 2024  
-**Author**: Development Team  
-**Status**: Approved
+## 15. Glossary
+
+- **DTO**: Data Transfer Object - Object used to transfer data between layers
+- **JPA**: Java Persistence API - Java specification for ORM
+- **ORM**: Object-Relational Mapping - Technique to map objects to database tables
+- **REST**: Representational State Transfer - Architectural style for APIs
+- **CRUD**: Create, Read, Update, Delete - Basic database operations
+- **Aggregate**: Domain-Driven Design pattern for grouping related entities
+- **Aggregate Root**: Main entity that controls access to the aggregate
+
+---
+
+## Document Control
+
+**Last Updated**: Current Date  
+**Review Cycle**: Quarterly  
+**Next Review**: Next Quarter  
+**Document Owner**: Engineering Team  
+**Approvers**: Technical Lead, Architecture Team
+
+---
+
+*End of Low Level Design Document*
