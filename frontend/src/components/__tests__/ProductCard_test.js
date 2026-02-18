@@ -2,157 +2,105 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ProductCard from '../ProductCard';
+import { useCart } from '../../context/CartContext';
+
+// Mock the useCart hook
+jest.mock('../../context/CartContext');
 
 describe('ProductCard Component', () => {
-  const mockOnAddToCart = jest.fn();
-
-  const mockProductInStock = {
+  const mockAddToCart = jest.fn();
+  const mockProduct = {
     id: 1,
-    name: 'Test Product',
-    description: 'This is a test product description',
+    title: 'Test Product',
+    category: 'electronics',
     price: 99.99,
-    stock: 10,
-    imageUrl: 'test-product.jpg'
-  };
-
-  const mockProductOutOfStock = {
-    id: 2,
-    name: 'Out of Stock Product',
-    description: 'This product is out of stock',
-    price: 49.99,
-    stock: 0,
-    imageUrl: 'out-of-stock.jpg'
+    image: 'https://example.com/test-image.jpg',
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    useCart.mockReturnValue({
+      addToCart: mockAddToCart,
+    });
   });
 
-  test('renders ProductCard component', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
+  test('renders product title', () => {
+    render(<ProductCard product={mockProduct} />);
+
     expect(screen.getByText('Test Product')).toBeInTheDocument();
   });
 
-  test('displays product name', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(screen.getByText('Test Product')).toBeInTheDocument();
+  test('renders product category', () => {
+    render(<ProductCard product={mockProduct} />);
+
+    expect(screen.getByText('electronics')).toBeInTheDocument();
   });
 
-  test('displays product description', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(screen.getByText('This is a test product description')).toBeInTheDocument();
-  });
+  test('renders product price', () => {
+    render(<ProductCard product={mockProduct} />);
 
-  test('displays product price', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(screen.getByText(/99.99/i)).toBeInTheDocument();
-  });
-
-  test('displays "Add to Cart" button when product is in stock', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(screen.getByText(/add to cart/i)).toBeInTheDocument();
-  });
-
-  test('displays "Out of Stock" button when product is out of stock', () => {
-    render(
-      <ProductCard 
-        product={mockProductOutOfStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(screen.getByText(/out of stock/i)).toBeInTheDocument();
-  });
-
-  test('displays stock status for in-stock product', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(screen.getByText(/in stock/i)).toBeInTheDocument();
-  });
-
-  test('calls onAddToCart when "Add to Cart" button is clicked', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    const addToCartButton = screen.getByText(/add to cart/i);
-    fireEvent.click(addToCartButton);
-    expect(mockOnAddToCart).toHaveBeenCalledTimes(1);
-    expect(mockOnAddToCart).toHaveBeenCalledWith(mockProductInStock);
-  });
-
-  test('"Out of Stock" button is disabled', () => {
-    render(
-      <ProductCard 
-        product={mockProductOutOfStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    const outOfStockButton = screen.getByText(/out of stock/i);
-    expect(outOfStockButton).toBeDisabled();
+    expect(screen.getByText(/99.99/)).toBeInTheDocument();
   });
 
   test('renders product image with correct src', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    const productImage = screen.getByAltText('Test Product');
-    expect(productImage).toBeInTheDocument();
-    expect(productImage).toHaveAttribute('src', 'test-product.jpg');
+    render(<ProductCard product={mockProduct} />);
+
+    const image = screen.getByAltText('Test Product');
+    expect(image).toBeInTheDocument();
+    expect(image).toHaveAttribute('src', 'https://example.com/test-image.jpg');
+  });
+
+  test('renders Add to Cart button', () => {
+    render(<ProductCard product={mockProduct} />);
+
+    expect(screen.getByText('Add to Cart')).toBeInTheDocument();
+  });
+
+  test('calls addToCart when Add to Cart button is clicked', () => {
+    render(<ProductCard product={mockProduct} />);
+
+    const addToCartButton = screen.getByText('Add to Cart');
+    fireEvent.click(addToCartButton);
+
+    expect(mockAddToCart).toHaveBeenCalledWith(mockProduct);
+    expect(mockAddToCart).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders all product properties correctly', () => {
+    render(<ProductCard product={mockProduct} />);
+
+    expect(screen.getByText('Test Product')).toBeInTheDocument();
+    expect(screen.getByText('electronics')).toBeInTheDocument();
+    expect(screen.getByText(/99.99/)).toBeInTheDocument();
+    expect(screen.getByAltText('Test Product')).toBeInTheDocument();
+  });
+
+  test('renders with different product data', () => {
+    const differentProduct = {
+      id: 2,
+      title: 'Another Product',
+      category: 'clothing',
+      price: 49.99,
+      image: 'https://example.com/another-image.jpg',
+    };
+
+    render(<ProductCard product={differentProduct} />);
+
+    expect(screen.getByText('Another Product')).toBeInTheDocument();
+    expect(screen.getByText('clothing')).toBeInTheDocument();
+    expect(screen.getByText(/49.99/)).toBeInTheDocument();
   });
 
   test('validates DOM structure', () => {
-    const { container } = render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(container.querySelector('.product-card')).toBeTruthy();
+    const { container } = render(<ProductCard product={mockProduct} />);
+
+    expect(container.querySelector('img')).toBeInTheDocument();
+    expect(container.querySelector('button')).toBeInTheDocument();
   });
 
-  test('renders all product props correctly', () => {
-    render(
-      <ProductCard 
-        product={mockProductInStock} 
-        onAddToCart={mockOnAddToCart}
-      />
-    );
-    expect(screen.getByText('Test Product')).toBeInTheDocument();
-    expect(screen.getByText('This is a test product description')).toBeInTheDocument();
-    expect(screen.getByText(/99.99/i)).toBeInTheDocument();
+  test('matches snapshot', () => {
+    const { container } = render(<ProductCard product={mockProduct} />);
+
+    expect(container).toMatchSnapshot();
   });
 });
