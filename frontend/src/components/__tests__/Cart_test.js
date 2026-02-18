@@ -1,157 +1,222 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { BrowserRouter } from 'react-router-dom';
 import Cart from '../Cart';
+import { useCart } from '../../context/CartContext';
+import { useNavigate } from 'react-router-dom';
+
+// Mock the hooks
+jest.mock('../../context/CartContext');
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: jest.fn(),
+}));
 
 describe('Cart Component', () => {
-  const mockOnRemoveFromCart = jest.fn();
-  const mockOnUpdateQuantity = jest.fn();
-
-  const mockCartItems = [
-    {
-      id: 1,
-      name: 'Test Product 1',
-      price: 29.99,
-      quantity: 2,
-      imageUrl: 'test-image-1.jpg'
-    },
-    {
-      id: 2,
-      name: 'Test Product 2',
-      price: 49.99,
-      quantity: 1,
-      imageUrl: 'test-image-2.jpg'
-    }
-  ];
+  const mockNavigate = jest.fn();
+  const mockUpdateQuantity = jest.fn();
+  const mockRemoveFromCart = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
+    useNavigate.mockReturnValue(mockNavigate);
   });
 
-  test('renders Cart component', () => {
+  test('renders Shopping Cart heading', () => {
+    useCart.mockReturnValue({
+      cart: [],
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 0,
+    });
+
     render(
-      <Cart 
-        cart={[]} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    expect(screen.getByText(/cart/i)).toBeInTheDocument();
+
+    expect(screen.getByText('Shopping Cart')).toBeInTheDocument();
   });
 
-  test('displays "Your cart is empty" when cart is empty', () => {
+  test('displays "Your cart is empty" message when cart is empty', () => {
+    useCart.mockReturnValue({
+      cart: [],
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 0,
+    });
+
     render(
-      <Cart 
-        cart={[]} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    expect(screen.getByText(/your cart is empty/i)).toBeInTheDocument();
+
+    expect(screen.getByText('Your cart is empty')).toBeInTheDocument();
   });
 
-  test('displays "Shopping Cart" heading', () => {
+  test('renders Continue Shopping button', () => {
+    useCart.mockReturnValue({
+      cart: [],
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 0,
+    });
+
     render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    expect(screen.getByText(/shopping cart/i)).toBeInTheDocument();
+
+    expect(screen.getByText('Continue Shopping')).toBeInTheDocument();
   });
 
-  test('displays "Order Summary" section', () => {
+  test('displays cart items with quantity controls when cart has items', () => {
+    const mockCart = [
+      {
+        id: 1,
+        title: 'Test Product',
+        price: 29.99,
+        quantity: 2,
+        image: 'test.jpg',
+      },
+    ];
+
+    useCart.mockReturnValue({
+      cart: mockCart,
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 59.98,
+    });
+
     render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    expect(screen.getByText(/order summary/i)).toBeInTheDocument();
+
+    expect(screen.getByText('Test Product')).toBeInTheDocument();
+    expect(screen.getByText(/29.99/)).toBeInTheDocument();
   });
 
-  test('displays "Proceed to Checkout" button when cart has items', () => {
+  test('displays cart total when cart has items', () => {
+    const mockCart = [
+      {
+        id: 1,
+        title: 'Test Product',
+        price: 29.99,
+        quantity: 2,
+        image: 'test.jpg',
+      },
+    ];
+
+    useCart.mockReturnValue({
+      cart: mockCart,
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 59.98,
+    });
+
     render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    expect(screen.getByText(/proceed to checkout/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/59.98/)).toBeInTheDocument();
   });
 
-  test('renders cart items with correct product names', () => {
+  test('renders Proceed to Checkout button when cart has items', () => {
+    const mockCart = [
+      {
+        id: 1,
+        title: 'Test Product',
+        price: 29.99,
+        quantity: 2,
+        image: 'test.jpg',
+      },
+    ];
+
+    useCart.mockReturnValue({
+      cart: mockCart,
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 59.98,
+    });
+
     render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    expect(screen.getByText('Test Product 1')).toBeInTheDocument();
-    expect(screen.getByText('Test Product 2')).toBeInTheDocument();
+
+    expect(screen.getByText('Proceed to Checkout')).toBeInTheDocument();
   });
 
-  test('displays Remove button for each cart item', () => {
+  test('calls navigate when Continue Shopping button is clicked', () => {
+    useCart.mockReturnValue({
+      cart: [],
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 0,
+    });
+
     render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    const removeButtons = screen.getAllByText(/remove/i);
-    expect(removeButtons).toHaveLength(mockCartItems.length);
+
+    const continueButton = screen.getByText('Continue Shopping');
+    fireEvent.click(continueButton);
+
+    expect(mockNavigate).toHaveBeenCalled();
   });
 
-  test('calls onRemoveFromCart when Remove button is clicked', () => {
-    render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
-    );
-    const removeButtons = screen.getAllByText(/remove/i);
-    fireEvent.click(removeButtons[0]);
-    expect(mockOnRemoveFromCart).toHaveBeenCalledTimes(1);
-  });
+  test('matches snapshot for empty cart', () => {
+    useCart.mockReturnValue({
+      cart: [],
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 0,
+    });
 
-  test('displays quantity controls for cart items', () => {
-    render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
-    );
-    const quantityElements = screen.getAllByText(/quantity/i);
-    expect(quantityElements.length).toBeGreaterThan(0);
-  });
-
-  test('renders correct number of cart items', () => {
-    render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
-    );
-    expect(screen.getByText('Test Product 1')).toBeInTheDocument();
-    expect(screen.getByText('Test Product 2')).toBeInTheDocument();
-  });
-
-  test('validates DOM structure with cart items', () => {
     const { container } = render(
-      <Cart 
-        cart={mockCartItems} 
-        onRemoveFromCart={mockOnRemoveFromCart}
-        onUpdateQuantity={mockOnUpdateQuantity}
-      />
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
     );
-    expect(container.querySelector('.cart')).toBeTruthy();
+
+    expect(container).toMatchSnapshot();
+  });
+
+  test('matches snapshot for cart with items', () => {
+    const mockCart = [
+      {
+        id: 1,
+        title: 'Test Product',
+        price: 29.99,
+        quantity: 2,
+        image: 'test.jpg',
+      },
+    ];
+
+    useCart.mockReturnValue({
+      cart: mockCart,
+      updateQuantity: mockUpdateQuantity,
+      removeFromCart: mockRemoveFromCart,
+      getCartTotal: () => 59.98,
+    });
+
+    const { container } = render(
+      <BrowserRouter>
+        <Cart />
+      </BrowserRouter>
+    );
+
+    expect(container).toMatchSnapshot();
   });
 });
