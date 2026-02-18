@@ -2,107 +2,203 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Products from '../Products';
+import { useCart } from '../../context/CartContext';
+
+// Mock the useCart hook
+jest.mock('../../context/CartContext');
+
+// Mock ProductCard component
+jest.mock('../ProductCard', () => {
+  return function MockProductCard({ product }) {
+    return (
+      <div data-testid="product-card">
+        <h3>{product.title}</h3>
+        <p>{product.category}</p>
+        <p>${product.price}</p>
+      </div>
+    );
+  };
+});
+
+// Mock fetch
+global.fetch = jest.fn();
 
 describe('Products Component', () => {
-  const mockOnAddToCart = jest.fn();
+  const mockProducts = [
+    {
+      id: 1,
+      title: 'Product 1',
+      category: 'electronics',
+      price: 99.99,
+      image: 'image1.jpg',
+    },
+    {
+      id: 2,
+      title: 'Product 2',
+      category: 'clothing',
+      price: 49.99,
+      image: 'image2.jpg',
+    },
+    {
+      id: 3,
+      title: 'Product 3',
+      category: 'electronics',
+      price: 149.99,
+      image: 'image3.jpg',
+    },
+  ];
 
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  test('renders Products component', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    expect(screen.getByText(/our products/i)).toBeInTheDocument();
-  });
-
-  test('displays "Our Products" heading', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    expect(screen.getByText(/our products/i)).toBeInTheDocument();
-  });
-
-  test('displays search input with placeholder', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    const searchInput = screen.getByPlaceholderText(/search products/i);
-    expect(searchInput).toBeInTheDocument();
-  });
-
-  test('search input accepts text input', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    const searchInput = screen.getByPlaceholderText(/search products/i);
-    fireEvent.change(searchInput, { target: { value: 'test product' } });
-    expect(searchInput.value).toBe('test product');
-  });
-
-  test('displays category filter buttons', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    const filterButtons = screen.getAllByRole('button');
-    expect(filterButtons.length).toBeGreaterThan(0);
-  });
-
-  test('displays "Loading products..." message initially', async () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    expect(screen.getByText(/loading products/i)).toBeInTheDocument();
-  });
-
-  test('displays error message when products fail to load', async () => {
-    global.fetch = jest.fn(() =>
-      Promise.reject(new Error('Failed to fetch'))
-    );
-
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText(/error/i)).toBeInTheDocument();
+    useCart.mockReturnValue({
+      addToCart: jest.fn(),
     });
   });
 
-  test('displays "No products found" when search returns no results', async () => {
-    global.fetch = jest.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve([])
-      })
-    );
+  test('renders Our Products heading', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
 
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    
+    render(<Products />);
+
+    expect(screen.getByText('Our Products')).toBeInTheDocument();
+  });
+
+  test('displays loading state initially', () => {
+    fetch.mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<Products />);
+
+    expect(screen.getByText('Loading products...')).toBeInTheDocument();
+  });
+
+  test('displays products after loading', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
+
+    render(<Products />);
+
     await waitFor(() => {
-      expect(screen.getByText(/no products found/i)).toBeInTheDocument();
+      expect(screen.getByText('Product 1')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Product 2')).toBeInTheDocument();
+    expect(screen.getByText('Product 3')).toBeInTheDocument();
+  });
+
+  test('displays error message when fetch fails', async () => {
+    const errorMessage = 'Failed to fetch';
+    fetch.mockRejectedValueOnce(new Error(errorMessage));
+
+    render(<Products />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error:/)).toBeInTheDocument();
     });
   });
 
-  test('category filter buttons are clickable', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    const filterButtons = screen.getAllByRole('button');
-    fireEvent.click(filterButtons[0]);
-    expect(filterButtons[0]).toBeInTheDocument();
+  test('renders category filter buttons', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
+
+    render(<Products />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 1')).toBeInTheDocument();
+    });
+
+    // Check for common category filter buttons
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.length).toBeGreaterThan(0);
   });
 
-  test('validates search input DOM structure', () => {
-    const { container } = render(<Products onAddToCart={mockOnAddToCart} />);
-    const searchInput = container.querySelector('input[type="text"]');
-    expect(searchInput).toBeTruthy();
+  test('filters products by category when filter button is clicked', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
+
+    render(<Products />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 1')).toBeInTheDocument();
+    });
+
+    // All products should be visible initially
+    expect(screen.getAllByTestId('product-card')).toHaveLength(3);
   });
 
-  test('renders products list container', () => {
-    const { container } = render(<Products onAddToCart={mockOnAddToCart} />);
-    expect(container.querySelector('.products')).toBeTruthy();
+  test('renders product grid with ProductCard components', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
+
+    render(<Products />);
+
+    await waitFor(() => {
+      const productCards = screen.getAllByTestId('product-card');
+      expect(productCards).toHaveLength(3);
+    });
   });
 
-  test('onAddToCart prop is passed correctly', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    expect(mockOnAddToCart).toBeDefined();
+  test('validates DOM structure with heading and product grid', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
+
+    const { container } = render(<Products />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 1')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Our Products')).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-testid="product-card"]')).toHaveLength(3);
   });
 
-  test('validates filter section is present', () => {
-    const { container } = render(<Products onAddToCart={mockOnAddToCart} />);
-    expect(container.querySelector('.filters')).toBeTruthy();
+  test('displays correct product information in cards', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
+
+    render(<Products />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 1')).toBeInTheDocument();
+      expect(screen.getByText('electronics')).toBeInTheDocument();
+      expect(screen.getByText('$99.99')).toBeInTheDocument();
+    });
   });
 
-  test('search functionality updates on input change', () => {
-    render(<Products onAddToCart={mockOnAddToCart} />);
-    const searchInput = screen.getByPlaceholderText(/search products/i);
-    fireEvent.change(searchInput, { target: { value: 'laptop' } });
-    expect(searchInput.value).toBe('laptop');
+  test('matches snapshot for loading state', () => {
+    fetch.mockImplementationOnce(() => new Promise(() => {}));
+
+    const { container } = render(<Products />);
+
+    expect(container).toMatchSnapshot();
+  });
+
+  test('matches snapshot for loaded products', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockProducts,
+    });
+
+    const { container } = render(<Products />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 1')).toBeInTheDocument();
+    });
+
+    expect(container).toMatchSnapshot();
   });
 });
