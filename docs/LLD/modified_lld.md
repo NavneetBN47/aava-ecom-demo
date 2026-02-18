@@ -1,291 +1,343 @@
 # Low Level Design Document
-# E-commerce Product and Shopping Cart Management System
+## E-commerce Product Management System
 
-## Document Information
+### Document Information
 - **Project**: E-commerce Platform
+- **Module**: Product Management & Shopping Cart Management
 - **Version**: 2.0
 - **Last Updated**: 2024
-- **Status**: Enhanced with Shopping Cart Management (Story SCRUM-1140)
+- **Author**: Engineering Team
+- **Status**: Modified (Story SCRUM-1140)
 
 ---
 
 ## Table of Contents
-
-1. [Executive Summary](#1-executive-summary)
-2. [Project Overview](#2-project-overview)
-3. [System Architecture](#3-system-architecture)
-   - 3.1 [High-Level Architecture](#31-high-level-architecture)
-   - 3.2 [Component Architecture](#32-component-architecture)
-   - 3.3 [Deployment Architecture](#33-deployment-architecture)
-4. [Class Diagrams](#4-class-diagrams)
-   - 4.1 [Product Management Classes](#41-product-management-classes)
-   - 4.2 [Shopping Cart Management Classes](#42-shopping-cart-management-classes)
-   - 4.3 [Integrated Class Diagram](#43-integrated-class-diagram)
-5. [Entity Relationship Diagrams](#5-entity-relationship-diagrams)
-   - 5.1 [Complete Database Schema](#51-complete-database-schema)
-6. [Sequence Diagrams](#6-sequence-diagrams)
-   - 6.1 [Product Management Flows](#61-product-management-flows)
-   - 6.2 [Shopping Cart Management Flows](#62-shopping-cart-management-flows)
-7. [API Specifications](#7-api-specifications)
-   - 7.1 [Product Management APIs](#71-product-management-apis)
-   - 7.2 [Shopping Cart Management APIs](#72-shopping-cart-management-apis)
-8. [Database Design](#8-database-design)
-   - 8.1 [Tables and Schemas](#81-tables-and-schemas)
-   - 8.2 [Indexes and Constraints](#82-indexes-and-constraints)
-   - 8.3 [Data Models](#83-data-models)
-9. [Technical Specifications](#9-technical-specifications)
-   - 9.1 [Technology Stack](#91-technology-stack)
-   - 9.2 [Design Patterns](#92-design-patterns)
-   - 9.3 [Error Handling Strategy](#93-error-handling-strategy)
-   - 9.4 [Validation Rules](#94-validation-rules)
-10. [Engineering Considerations](#10-engineering-considerations)
-    - 10.1 [Design Assumptions and Constraints](#101-design-assumptions-and-constraints)
-    - 10.2 [Performance Considerations](#102-performance-considerations)
-    - 10.3 [Scalability Approach](#103-scalability-approach)
-    - 10.4 [Security Considerations](#104-security-considerations)
-    - 10.5 [Logging and Monitoring](#105-logging-and-monitoring)
-    - 10.6 [Transaction Management](#106-transaction-management)
-11. [Change Traceability](#11-change-traceability)
-    - 11.1 [What Changed](#111-what-changed)
-    - 11.2 [Why Changes Were Applied](#112-why-changes-were-applied)
-    - 11.3 [Impacted Components](#113-impacted-components)
-    - 11.4 [Acceptance Criteria Mapping](#114-acceptance-criteria-mapping)
-12. [Key Features](#12-key-features)
-13. [Appendix](#13-appendix)
+1. [Introduction](#1-introduction)
+2. [System Architecture](#2-system-architecture)
+3. [Module Design](#3-module-design)
+4. [Class Design](#4-class-design)
+5. [Database Design](#5-database-design)
+6. [API Design](#6-api-design)
+7. [Sequence Diagrams](#7-sequence-diagrams)
+8. [Data Flow Diagrams](#8-data-flow-diagrams)
+9. [Design Patterns](#9-design-patterns)
+10. [Error Handling](#10-error-handling)
+11. [Security Considerations](#11-security-considerations)
+12. [Performance & Scalability](#12-performance--scalability)
+13. [Logging & Monitoring](#13-logging--monitoring)
+14. [Assumptions & Constraints](#14-assumptions--constraints)
+15. [Change Traceability](#15-change-traceability)
 
 ---
 
-## 1. Executive Summary
+## 1. Introduction
 
-This Low Level Design document describes the technical architecture and implementation details for an E-commerce platform built using Spring Boot, Java 21, and PostgreSQL. The system comprises two primary modules:
+### 1.1 Purpose
+This Low Level Design (LLD) document provides detailed technical specifications for the E-commerce Product Management and Shopping Cart Management System. It serves as a blueprint for developers to implement the system using Spring Boot, Java 21, and PostgreSQL.
 
-1. **Product Management Module**: Handles all product-related operations including CRUD operations, search, and filtering capabilities.
-2. **Shopping Cart Management Module**: Manages user shopping carts, cart items, and integrates seamlessly with the product catalog.
+### 1.2 Scope
+This document covers:
+- **Product Management Module**: Product CRUD operations, inventory management, category management
+- **Shopping Cart Management Module**: Cart operations, item management, cart persistence
+- Detailed class structures and relationships
+- Database schema and relationships
+- RESTful API endpoints
+- Business logic workflows
+- Integration points
 
-The system follows a layered architecture pattern with clear separation of concerns, implementing industry-standard design patterns and best practices for maintainability, scalability, and security.
+### 1.3 Technology Stack
+- **Backend Framework**: Spring Boot 3.2.x
+- **Language**: Java 21
+- **Database**: PostgreSQL 15+
+- **ORM**: Spring Data JPA / Hibernate
+- **Build Tool**: Maven
+- **API Documentation**: OpenAPI/Swagger
 
----
-
-## 2. Project Overview
-
-The E-commerce Product and Shopping Cart Management System is a comprehensive backend solution designed to support online retail operations. The system provides:
-
-### Core Modules:
-
-#### ProductManagement Module
-- Complete product lifecycle management
-- Advanced search and filtering capabilities
-- Category-based product organization
-- RESTful API endpoints for product operations
-- Robust validation and error handling
-
-#### ShoppingCartManagement Module (Story SCRUM-1140)
-- User-specific shopping cart management
-- Cart item operations (add, update, remove)
-- Real-time cart total calculations
-- Integration with product catalog
-- Persistent cart storage
-
-### System Characteristics:
-- **Stateless Design**: Enables horizontal scalability
-- **RESTful Architecture**: Standard HTTP methods and status codes
-- **Database-Driven**: PostgreSQL for reliable data persistence
-- **Layered Architecture**: Clear separation between presentation, business, and data layers
-- **Comprehensive Validation**: Input validation at multiple layers
-- **Error Handling**: Structured exception handling with meaningful error messages
+### 1.4 Design Principles
+- **SOLID Principles**: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
+- **Clean Architecture**: Separation of concerns with layered architecture
+- **RESTful Design**: Resource-based API design
+- **Domain-Driven Design**: Rich domain models with business logic encapsulation
 
 ---
 
-## 3. System Architecture
+## 2. System Architecture
 
-### 3.1 High-Level Architecture
+### 2.1 High-Level Architecture
 
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        Client[Web/Mobile Client]
+        WEB[Web Application]
+        MOBILE[Mobile App]
+        API_CLIENT[API Clients]
     end
     
     subgraph "API Gateway Layer"
-        Gateway[API Gateway/Load Balancer]
+        GATEWAY[API Gateway]
+        AUTH[Authentication Service]
     end
     
     subgraph "Application Layer"
-        subgraph "Product Management"
-            PC[ProductController]
-            PS[ProductService]
-            PR[ProductRepository]
-        end
-        
-        subgraph "Shopping Cart Management"
-            SCC[ShoppingCartController]
-            SCS[ShoppingCartService]
-            SCR[ShoppingCartRepository]
-            CIR[CartItemRepository]
-        end
+        PRODUCT_CTRL[Product Controller]
+        CART_CTRL[Shopping Cart Controller]
+    end
+    
+    subgraph "Service Layer"
+        PRODUCT_SVC[Product Service]
+        CATEGORY_SVC[Category Service]
+        INVENTORY_SVC[Inventory Service]
+        CART_SVC[Shopping Cart Service]
+    end
+    
+    subgraph "Data Access Layer"
+        PRODUCT_REPO[Product Repository]
+        CATEGORY_REPO[Category Repository]
+        CART_REPO[Cart Repository]
+        CART_ITEM_REPO[Cart Item Repository]
     end
     
     subgraph "Data Layer"
         DB[(PostgreSQL Database)]
-        subgraph "Tables"
-            PT[products]
-            SCT[shopping_carts]
-            CIT[cart_items]
-        end
     end
     
-    Client --> Gateway
-    Gateway --> PC
-    Gateway --> SCC
+    subgraph "External Services"
+        CACHE[Redis Cache]
+        QUEUE[Message Queue]
+        STORAGE[File Storage]
+    end
     
-    PC --> PS
-    PS --> PR
-    PR --> DB
-    PR --> PT
+    WEB --> GATEWAY
+    MOBILE --> GATEWAY
+    API_CLIENT --> GATEWAY
     
-    SCC --> SCS
-    SCS --> SCR
-    SCS --> CIR
-    SCS -."validates products".-> PS
-    SCR --> DB
-    CIR --> DB
-    SCR --> SCT
-    CIR --> CIT
+    GATEWAY --> AUTH
+    GATEWAY --> PRODUCT_CTRL
+    GATEWAY --> CART_CTRL
     
-    CIT -."foreign key".-> PT
-    CIT -."foreign key".-> SCT
+    PRODUCT_CTRL --> PRODUCT_SVC
+    PRODUCT_CTRL --> CATEGORY_SVC
+    PRODUCT_CTRL --> INVENTORY_SVC
+    CART_CTRL --> CART_SVC
+    
+    PRODUCT_SVC --> PRODUCT_REPO
+    CATEGORY_SVC --> CATEGORY_REPO
+    INVENTORY_SVC --> PRODUCT_REPO
+    CART_SVC --> CART_REPO
+    CART_SVC --> CART_ITEM_REPO
+    CART_SVC --> PRODUCT_SVC
+    
+    PRODUCT_REPO --> DB
+    CATEGORY_REPO --> DB
+    CART_REPO --> DB
+    CART_ITEM_REPO --> DB
+    
+    PRODUCT_SVC -.-> CACHE
+    CART_SVC -.-> CACHE
+    PRODUCT_SVC -.-> QUEUE
+    PRODUCT_SVC -.-> STORAGE
 ```
 
-### 3.2 Component Architecture
+### 2.2 Component Architecture
 
 ```mermaid
 graph LR
     subgraph "Presentation Layer"
-        PC[ProductController]
-        SCC[ShoppingCartController]
+        A[Controllers]
+        B[DTOs]
+        C[Validators]
     end
     
     subgraph "Business Logic Layer"
-        PS[ProductService]
-        SCS[ShoppingCartService]
+        D[Services]
+        E[Domain Models]
+        F[Business Rules]
     end
     
     subgraph "Data Access Layer"
-        PR[ProductRepository]
-        SCR[ShoppingCartRepository]
-        CIR[CartItemRepository]
+        G[Repositories]
+        H[Entities]
+        I[Specifications]
     end
     
-    subgraph "Domain Model"
-        P[Product Entity]
-        SC[ShoppingCart Entity]
-        CI[CartItem Entity]
+    subgraph "Infrastructure Layer"
+        J[Configuration]
+        K[Security]
+        L[Logging]
+        M[Exception Handling]
     end
     
-    PC --> PS
-    SCC --> SCS
-    PS --> PR
-    SCS --> SCR
-    SCS --> CIR
-    SCS -."integration".-> PS
-    
-    PR --> P
-    SCR --> SC
-    CIR --> CI
-    
-    CI -."references".-> P
-    CI -."belongs to".-> SC
+    A --> D
+    B --> A
+    C --> A
+    D --> E
+    D --> F
+    D --> G
+    G --> H
+    G --> I
+    J -.-> A
+    J -.-> D
+    J -.-> G
+    K -.-> A
+    L -.-> D
+    M -.-> A
 ```
 
-### 3.3 Deployment Architecture
+### 2.3 Deployment Architecture
 
 ```mermaid
 graph TB
     subgraph "Load Balancer"
-        LB[Nginx/AWS ALB]
+        LB[Nginx/ALB]
     end
     
-    subgraph "Application Tier - Auto Scaling Group"
+    subgraph "Application Tier"
         APP1[Spring Boot Instance 1]
         APP2[Spring Boot Instance 2]
-        APP3[Spring Boot Instance N]
+        APP3[Spring Boot Instance 3]
+    end
+    
+    subgraph "Cache Tier"
+        REDIS1[Redis Master]
+        REDIS2[Redis Replica]
     end
     
     subgraph "Database Tier"
-        PRIMARY[(PostgreSQL Primary)]
-        REPLICA1[(Read Replica 1)]
-        REPLICA2[(Read Replica 2)]
+        DB_MASTER[(PostgreSQL Master)]
+        DB_REPLICA[(PostgreSQL Replica)]
     end
     
-    subgraph "Monitoring & Logging"
-        MON[Prometheus/Grafana]
-        LOG[ELK Stack]
+    subgraph "Storage Tier"
+        S3[Object Storage]
     end
     
     LB --> APP1
     LB --> APP2
     LB --> APP3
     
-    APP1 --> PRIMARY
-    APP2 --> PRIMARY
-    APP3 --> PRIMARY
+    APP1 --> REDIS1
+    APP2 --> REDIS1
+    APP3 --> REDIS1
+    REDIS1 -.-> REDIS2
     
-    APP1 -."read operations".-> REPLICA1
-    APP2 -."read operations".-> REPLICA2
-    APP3 -."read operations".-> REPLICA1
+    APP1 --> DB_MASTER
+    APP2 --> DB_MASTER
+    APP3 --> DB_MASTER
+    DB_MASTER -.-> DB_REPLICA
     
-    PRIMARY -."replication".-> REPLICA1
-    PRIMARY -."replication".-> REPLICA2
-    
-    APP1 --> MON
-    APP2 --> MON
-    APP3 --> MON
-    
-    APP1 --> LOG
-    APP2 --> LOG
-    APP3 --> LOG
+    APP1 -.-> S3
+    APP2 -.-> S3
+    APP3 -.-> S3
 ```
 
 ---
 
-## 4. Class Diagrams
+## 3. Module Design
+
+### 3.1 Product Management Module
+
+**Responsibilities:**
+- Manage product lifecycle (Create, Read, Update, Delete)
+- Handle product categorization
+- Manage product inventory
+- Support product search and filtering
+- Handle product images and media
+
+**Components:**
+- `ProductController`: REST API endpoints
+- `ProductService`: Business logic
+- `ProductRepository`: Data access
+- `Product`: Domain entity
+- `ProductDTO`: Data transfer object
+
+### 3.2 Shopping Cart Management Module
+
+**Responsibilities:**
+- Create and manage shopping carts for users
+- Add, update, and remove items from cart
+- Calculate cart totals and apply business rules
+- Persist cart state across sessions
+- Handle cart expiration and cleanup
+
+**Components:**
+- `ShoppingCartController`: REST API endpoints for cart operations
+- `ShoppingCartService`: Business logic for cart management
+- `ShoppingCartRepository`: Data access for shopping carts
+- `CartItemRepository`: Data access for cart items
+- `ShoppingCart`: Domain entity representing user's cart
+- `CartItem`: Domain entity representing items in cart
+
+### 3.3 Module Interaction Diagram
+
+```mermaid
+graph LR
+    subgraph "Product Management"
+        PM[Product Module]
+    end
+    
+    subgraph "Shopping Cart Management"
+        SCM[Shopping Cart Module]
+    end
+    
+    subgraph "User Management"
+        UM[User Module]
+    end
+    
+    subgraph "Order Management"
+        OM[Order Module]
+    end
+    
+    SCM -->|Get Product Details| PM
+    SCM -->|Validate User| UM
+    OM -->|Retrieve Cart| SCM
+    OM -->|Update Inventory| PM
+    SCM -->|Check Availability| PM
+```
+
+---
+
+## 4. Class Design
 
 ### 4.1 Product Management Classes
+
+#### 4.1.1 Class Diagram
 
 ```mermaid
 classDiagram
     class ProductController {
         -ProductService productService
-        +getAllProducts() ResponseEntity~List~Product~~
-        +getProductById(Long id) ResponseEntity~Product~
-        +createProduct(Product product) ResponseEntity~Product~
-        +updateProduct(Long id, Product product) ResponseEntity~Product~
-        +deleteProduct(Long id) ResponseEntity~Void~
-        +searchProducts(String keyword) ResponseEntity~List~Product~~
-        +getProductsByCategory(String category) ResponseEntity~List~Product~~
+        +createProduct(ProductDTO) ResponseEntity~ProductDTO~
+        +getProduct(Long) ResponseEntity~ProductDTO~
+        +updateProduct(Long, ProductDTO) ResponseEntity~ProductDTO~
+        +deleteProduct(Long) ResponseEntity~Void~
+        +getAllProducts(Pageable) ResponseEntity~Page~ProductDTO~~
+        +searchProducts(String, Pageable) ResponseEntity~Page~ProductDTO~~
     }
     
     class ProductService {
         -ProductRepository productRepository
-        +getAllProducts() List~Product~
-        +getProductById(Long id) Optional~Product~
-        +createProduct(Product product) Product
-        +updateProduct(Long id, Product product) Product
-        +deleteProduct(Long id) void
-        +searchProducts(String keyword) List~Product~
-        +getProductsByCategory(String category) List~Product~
-        +validateProduct(Product product) boolean
+        -CategoryRepository categoryRepository
+        -ProductMapper productMapper
+        +createProduct(ProductDTO) ProductDTO
+        +getProductById(Long) ProductDTO
+        +updateProduct(Long, ProductDTO) ProductDTO
+        +deleteProduct(Long) void
+        +getAllProducts(Pageable) Page~ProductDTO~
+        +searchProducts(String, Pageable) Page~ProductDTO~
+        +updateInventory(Long, Integer) void
+        -validateProduct(ProductDTO) void
+        -checkInventory(Long) boolean
     }
     
     class ProductRepository {
         <<interface>>
-        +findAll() List~Product~
-        +findById(Long id) Optional~Product~
-        +save(Product product) Product
-        +deleteById(Long id) void
-        +findByNameContainingIgnoreCase(String keyword) List~Product~
-        +findByCategory(String category) List~Product~
-        +existsById(Long id) boolean
+        +findById(Long) Optional~Product~
+        +findAll(Pageable) Page~Product~
+        +findByNameContaining(String, Pageable) Page~Product~
+        +findByCategoryId(Long, Pageable) Page~Product~
+        +findByPriceBetween(BigDecimal, BigDecimal) List~Product~
+        +save(Product) Product
+        +deleteById(Long) void
     }
     
     class Product {
@@ -293,68 +345,99 @@ classDiagram
         -String name
         -String description
         -BigDecimal price
-        -String category
         -Integer stockQuantity
+        -String sku
+        -Category category
         -LocalDateTime createdAt
         -LocalDateTime updatedAt
+        -Boolean active
         +getId() Long
-        +setId(Long id) void
+        +setId(Long) void
         +getName() String
-        +setName(String name) void
+        +setName(String) void
         +getPrice() BigDecimal
-        +setPrice(BigDecimal price) void
-        +getCategory() String
-        +setCategory(String category) void
+        +setPrice(BigDecimal) void
         +getStockQuantity() Integer
-        +setStockQuantity(Integer quantity) void
+        +setStockQuantity(Integer) void
+        +isAvailable() boolean
+        +decrementStock(Integer) void
+        +incrementStock(Integer) void
     }
     
-    ProductController --> ProductService : uses
-    ProductService --> ProductRepository : uses
-    ProductRepository --> Product : manages
-    ProductService --> Product : validates
+    class Category {
+        -Long id
+        -String name
+        -String description
+        -Category parentCategory
+        -List~Product~ products
+        +getId() Long
+        +getName() String
+        +getProducts() List~Product~
+    }
+    
+    class ProductDTO {
+        -Long id
+        -String name
+        -String description
+        -BigDecimal price
+        -Integer stockQuantity
+        -String sku
+        -Long categoryId
+        -String categoryName
+        -Boolean active
+    }
+    
+    ProductController --> ProductService
+    ProductService --> ProductRepository
+    ProductService --> ProductMapper
+    ProductRepository --> Product
+    Product --> Category
+    ProductMapper --> Product
+    ProductMapper --> ProductDTO
 ```
 
 ### 4.2 Shopping Cart Management Classes
 
+#### 4.2.1 Class Diagram
+
 ```mermaid
 classDiagram
     class ShoppingCartController {
         -ShoppingCartService shoppingCartService
-        +addToCart(Long userId, Long productId, Integer quantity) ResponseEntity~ShoppingCart~
-        +viewCart(Long userId) ResponseEntity~ShoppingCart~
-        +updateCartItemQuantity(Long userId, Long productId, Integer quantity) ResponseEntity~ShoppingCart~
-        +removeFromCart(Long userId, Long productId) ResponseEntity~ShoppingCart~
+        +getCart(Long) ResponseEntity~ShoppingCartDTO~
+        +addItem(Long, CartItemDTO) ResponseEntity~ShoppingCartDTO~
+        +updateItem(Long, Long, CartItemDTO) ResponseEntity~ShoppingCartDTO~
+        +removeItem(Long, Long) ResponseEntity~ShoppingCartDTO~
+        +clearCart(Long) ResponseEntity~Void~
     }
     
     class ShoppingCartService {
-        -ShoppingCartRepository shoppingCartRepository
+        -ShoppingCartRepository cartRepository
         -CartItemRepository cartItemRepository
         -ProductService productService
-        +addToCart(Long userId, Long productId, Integer quantity) ShoppingCart
-        +viewCart(Long userId) Optional~ShoppingCart~
-        +updateCartItemQuantity(Long userId, Long productId, Integer quantity) ShoppingCart
-        +removeFromCart(Long userId, Long productId) ShoppingCart
-        +calculateCartTotal(ShoppingCart cart) BigDecimal
-        +getOrCreateCart(Long userId) ShoppingCart
-        -validateProductAvailability(Long productId, Integer quantity) boolean
+        +getCartByUserId(Long) ShoppingCartDTO
+        +addItemToCart(Long, CartItemDTO) ShoppingCartDTO
+        +updateCartItem(Long, Long, CartItemDTO) ShoppingCartDTO
+        +removeItemFromCart(Long, Long) ShoppingCartDTO
+        +clearCart(Long) void
+        +calculateCartTotal(Long) BigDecimal
+        -validateCartItem(CartItemDTO) void
+        -checkProductAvailability(Long, Integer) boolean
     }
     
     class ShoppingCartRepository {
         <<interface>>
-        +findByUserId(Long userId) Optional~ShoppingCart~
-        +save(ShoppingCart cart) ShoppingCart
-        +deleteById(Long id) void
-        +existsByUserId(Long userId) boolean
+        +findByUserId(Long) Optional~ShoppingCart~
+        +save(ShoppingCart) ShoppingCart
+        +deleteById(Long) void
     }
     
     class CartItemRepository {
         <<interface>>
-        +findByCartIdAndProductId(Long cartId, Long productId) Optional~CartItem~
-        +findByCartId(Long cartId) List~CartItem~
-        +save(CartItem item) CartItem
-        +delete(CartItem item) void
-        +deleteByCartIdAndProductId(Long cartId, Long productId) void
+        +findByCartId(Long) List~CartItem~
+        +findByCartIdAndProductId(Long, Long) Optional~CartItem~
+        +save(CartItem) CartItem
+        +deleteById(Long) void
     }
     
     class ShoppingCart {
@@ -365,768 +448,154 @@ classDiagram
         -LocalDateTime createdAt
         -LocalDateTime updatedAt
         +getId() Long
-        +setId(Long id) void
         +getUserId() Long
-        +setUserId(Long userId) void
         +getItems() List~CartItem~
-        +setItems(List~CartItem~ items) void
-        +getTotalAmount() BigDecimal
-        +setTotalAmount(BigDecimal amount) void
-        +addItem(CartItem item) void
-        +removeItem(CartItem item) void
-        +updateItem(CartItem item) void
+        +addItem(CartItem) void
+        +removeItem(Long) void
+        +updateItem(Long, Integer) void
+        +calculateTotal() BigDecimal
+        +clear() void
     }
     
     class CartItem {
         -Long id
-        -Long cartId
+        -ShoppingCart cart
         -Long productId
         -String productName
-        -BigDecimal productPrice
-        -Integer quantity
-        -BigDecimal subtotal
-        -LocalDateTime addedAt
-        +getId() Long
-        +setId(Long id) void
-        +getCartId() Long
-        +setCartId(Long cartId) void
-        +getProductId() Long
-        +setProductId(Long productId) void
-        +getQuantity() Integer
-        +setQuantity(Integer quantity) void
-        +getSubtotal() BigDecimal
-        +calculateSubtotal() void
-    }
-    
-    ShoppingCartController --> ShoppingCartService : uses
-    ShoppingCartService --> ShoppingCartRepository : uses
-    ShoppingCartService --> CartItemRepository : uses
-    ShoppingCartService --> ProductService : validates products
-    ShoppingCartRepository --> ShoppingCart : manages
-    CartItemRepository --> CartItem : manages
-    ShoppingCart "1" *-- "many" CartItem : contains
-```
-
-### 4.3 Integrated Class Diagram
-
-```mermaid
-classDiagram
-    %% Product Management Module
-    class ProductController {
-        -ProductService productService
-        +getAllProducts()
-        +getProductById()
-        +createProduct()
-        +updateProduct()
-        +deleteProduct()
-        +searchProducts()
-        +getProductsByCategory()
-    }
-    
-    class ProductService {
-        -ProductRepository productRepository
-        +getAllProducts()
-        +getProductById()
-        +createProduct()
-        +updateProduct()
-        +deleteProduct()
-        +searchProducts()
-        +getProductsByCategory()
-        +validateProduct()
-    }
-    
-    class ProductRepository {
-        <<interface>>
-        +findAll()
-        +findById()
-        +save()
-        +deleteById()
-        +findByNameContainingIgnoreCase()
-        +findByCategory()
-    }
-    
-    class Product {
-        -Long id
-        -String name
-        -String description
         -BigDecimal price
-        -String category
-        -Integer stockQuantity
-        -LocalDateTime createdAt
-        -LocalDateTime updatedAt
-    }
-    
-    %% Shopping Cart Management Module
-    class ShoppingCartController {
-        -ShoppingCartService shoppingCartService
-        +addToCart()
-        +viewCart()
-        +updateCartItemQuantity()
-        +removeFromCart()
-    }
-    
-    class ShoppingCartService {
-        -ShoppingCartRepository shoppingCartRepository
-        -CartItemRepository cartItemRepository
-        -ProductService productService
-        +addToCart()
-        +viewCart()
-        +updateCartItemQuantity()
-        +removeFromCart()
-        +calculateCartTotal()
-    }
-    
-    class ShoppingCartRepository {
-        <<interface>>
-        +findByUserId()
-        +save()
-        +deleteById()
-    }
-    
-    class CartItemRepository {
-        <<interface>>
-        +findByCartIdAndProductId()
-        +findByCartId()
-        +save()
-        +delete()
-    }
-    
-    class ShoppingCart {
-        -Long id
-        -Long userId
-        -List~CartItem~ items
-        -BigDecimal totalAmount
-        -LocalDateTime createdAt
-        -LocalDateTime updatedAt
-    }
-    
-    class CartItem {
-        -Long id
-        -Long cartId
-        -Long productId
-        -String productName
-        -BigDecimal productPrice
         -Integer quantity
         -BigDecimal subtotal
+        +getId() Long
+        +getProductId() Long
+        +getQuantity() Integer
+        +setQuantity(Integer) void
+        +calculateSubtotal() BigDecimal
     }
-    
-    %% Relationships
-    ProductController --> ProductService
-    ProductService --> ProductRepository
-    ProductRepository --> Product
     
     ShoppingCartController --> ShoppingCartService
     ShoppingCartService --> ShoppingCartRepository
     ShoppingCartService --> CartItemRepository
-    ShoppingCartService --> ProductService : validates products
+    ShoppingCartService --> ProductService
     ShoppingCartRepository --> ShoppingCart
     CartItemRepository --> CartItem
-    ShoppingCart "1" *-- "many" CartItem
+    ShoppingCart "1" --> "*" CartItem
+```
+
+### 4.3 Complete System Class Diagram
+
+```mermaid
+classDiagram
+    class ProductController
+    class ProductService
+    class ProductRepository
+    class Product
+    class Category
+    
+    class ShoppingCartController
+    class ShoppingCartService
+    class ShoppingCartRepository
+    class CartItemRepository
+    class ShoppingCart
+    class CartItem
+    
+    ProductController --> ProductService
+    ProductService --> ProductRepository
+    ProductRepository --> Product
+    Product --> Category
+    
+    ShoppingCartController --> ShoppingCartService
+    ShoppingCartService --> ShoppingCartRepository
+    ShoppingCartService --> CartItemRepository
+    ShoppingCartService --> ProductService
+    ShoppingCartRepository --> ShoppingCart
+    CartItemRepository --> CartItem
+    ShoppingCart "1" --> "*" CartItem
     CartItem --> Product : references
 ```
 
 ---
 
-## 5. Entity Relationship Diagrams
+## 5. Database Design
 
-### 5.1 Complete Database Schema
+### 5.1 Entity Relationship Diagram
 
 ```mermaid
 erDiagram
-    PRODUCTS ||--o{ CART_ITEMS : "referenced by"
-    SHOPPING_CARTS ||--o{ CART_ITEMS : "contains"
+    CATEGORIES ||--o{ PRODUCTS : contains
+    PRODUCTS ||--o{ CART_ITEMS : "included in"
+    SHOPPING_CARTS ||--o{ CART_ITEMS : contains
+    USERS ||--o{ SHOPPING_CARTS : owns
+    
+    CATEGORIES {
+        bigint id PK
+        varchar name
+        text description
+        bigint parent_category_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
     
     PRODUCTS {
-        BIGINT id PK "Primary Key, Auto-increment"
-        VARCHAR(255) name "NOT NULL, Product name"
-        TEXT description "Product description"
-        DECIMAL(10_2) price "NOT NULL, CHECK price >= 0"
-        VARCHAR(100) category "Product category"
-        INTEGER stock_quantity "NOT NULL, CHECK >= 0, Default 0"
-        TIMESTAMP created_at "NOT NULL, Default CURRENT_TIMESTAMP"
-        TIMESTAMP updated_at "NOT NULL, Default CURRENT_TIMESTAMP"
+        bigint id PK
+        varchar name
+        text description
+        decimal price
+        integer stock_quantity
+        varchar sku UK
+        bigint category_id FK
+        boolean active
+        timestamp created_at
+        timestamp updated_at
     }
     
     SHOPPING_CARTS {
-        BIGINT id PK "Primary Key, Auto-increment"
-        BIGINT user_id UK "NOT NULL, Unique, User identifier"
-        DECIMAL(10_2) total_amount "NOT NULL, Default 0.00"
-        TIMESTAMP created_at "NOT NULL, Default CURRENT_TIMESTAMP"
-        TIMESTAMP updated_at "NOT NULL, Default CURRENT_TIMESTAMP"
+        bigint id PK
+        bigint user_id FK
+        decimal total_amount
+        timestamp created_at
+        timestamp updated_at
     }
     
     CART_ITEMS {
-        BIGINT id PK "Primary Key, Auto-increment"
-        BIGINT cart_id FK "NOT NULL, Foreign Key to shopping_carts"
-        BIGINT product_id FK "NOT NULL, Foreign Key to products"
-        VARCHAR(255) product_name "NOT NULL, Denormalized for performance"
-        DECIMAL(10_2) product_price "NOT NULL, Price at time of adding"
-        INTEGER quantity "NOT NULL, CHECK quantity > 0"
-        DECIMAL(10_2) subtotal "NOT NULL, Calculated field"
-        TIMESTAMP added_at "NOT NULL, Default CURRENT_TIMESTAMP"
+        bigint id PK
+        bigint cart_id FK
+        bigint product_id FK
+        varchar product_name
+        decimal price
+        integer quantity
+        decimal subtotal
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    USERS {
+        bigint id PK
+        varchar email UK
+        varchar username
+        timestamp created_at
     }
 ```
 
----
+### 5.2 Database Schema
 
-## 6. Sequence Diagrams
+#### 5.2.1 Categories Table
 
-### 6.1 Product Management Flows
+```sql
+CREATE TABLE categories (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    parent_category_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
 
-#### 6.1.1 Get All Products
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: GET /api/products
-    ProductController->>+ProductService: getAllProducts()
-    ProductService->>+ProductRepository: findAll()
-    ProductRepository->>+Database: SELECT * FROM products
-    Database-->>-ProductRepository: List<Product>
-    ProductRepository-->>-ProductService: List<Product>
-    ProductService-->>-ProductController: List<Product>
-    ProductController-->>-Client: 200 OK + List<Product>
+CREATE INDEX idx_categories_parent ON categories(parent_category_id);
+CREATE INDEX idx_categories_name ON categories(name);
 ```
 
-#### 6.1.2 Get Product by ID
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: GET /api/products/{id}
-    ProductController->>+ProductService: getProductById(id)
-    ProductService->>+ProductRepository: findById(id)
-    ProductRepository->>+Database: SELECT * FROM products WHERE id = ?
-    
-    alt Product Found
-        Database-->>-ProductRepository: Product
-        ProductRepository-->>-ProductService: Optional<Product>
-        ProductService-->>-ProductController: Product
-        ProductController-->>-Client: 200 OK + Product
-    else Product Not Found
-        Database-->>ProductRepository: Empty
-        ProductRepository-->>ProductService: Optional.empty()
-        ProductService-->>ProductController: null
-        ProductController-->>Client: 404 Not Found
-    end
-```
-
-#### 6.1.3 Create Product
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: POST /api/products + Product JSON
-    ProductController->>ProductController: Validate Request Body
-    
-    alt Validation Fails
-        ProductController-->>Client: 400 Bad Request + Validation Errors
-    else Validation Passes
-        ProductController->>+ProductService: createProduct(product)
-        ProductService->>ProductService: Validate Business Rules
-        ProductService->>ProductService: Set timestamps
-        ProductService->>+ProductRepository: save(product)
-        ProductRepository->>+Database: INSERT INTO products VALUES (...)
-        Database-->>-ProductRepository: Saved Product with ID
-        ProductRepository-->>-ProductService: Product
-        ProductService-->>-ProductController: Product
-        ProductController-->>-Client: 201 Created + Product
-    end
-```
-
-#### 6.1.4 Update Product
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: PUT /api/products/{id} + Product JSON
-    ProductController->>ProductController: Validate Request Body
-    
-    alt Validation Fails
-        ProductController-->>Client: 400 Bad Request
-    else Validation Passes
-        ProductController->>+ProductService: updateProduct(id, product)
-        ProductService->>+ProductRepository: findById(id)
-        ProductRepository->>+Database: SELECT * FROM products WHERE id = ?
-        
-        alt Product Not Found
-            Database-->>-ProductRepository: Empty
-            ProductRepository-->>-ProductService: Optional.empty()
-            ProductService-->>-ProductController: null
-            ProductController-->>-Client: 404 Not Found
-        else Product Found
-            Database-->>ProductRepository: Existing Product
-            ProductRepository-->>ProductService: Optional<Product>
-            ProductService->>ProductService: Merge changes
-            ProductService->>ProductService: Update timestamp
-            ProductService->>+ProductRepository: save(updatedProduct)
-            ProductRepository->>+Database: UPDATE products SET ... WHERE id = ?
-            Database-->>-ProductRepository: Updated Product
-            ProductRepository-->>-ProductService: Product
-            ProductService-->>ProductController: Product
-            ProductController-->>Client: 200 OK + Product
-        end
-    end
-```
-
-#### 6.1.5 Delete Product
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: DELETE /api/products/{id}
-    ProductController->>+ProductService: deleteProduct(id)
-    ProductService->>+ProductRepository: existsById(id)
-    ProductRepository->>+Database: SELECT EXISTS(SELECT 1 FROM products WHERE id = ?)
-    
-    alt Product Not Found
-        Database-->>-ProductRepository: false
-        ProductRepository-->>-ProductService: false
-        ProductService-->>-ProductController: throws NotFoundException
-        ProductController-->>-Client: 404 Not Found
-    else Product Found
-        Database-->>ProductRepository: true
-        ProductRepository-->>ProductService: true
-        ProductService->>+ProductRepository: deleteById(id)
-        ProductRepository->>+Database: DELETE FROM products WHERE id = ?
-        Database-->>-ProductRepository: Success
-        ProductRepository-->>-ProductService: void
-        ProductService-->>ProductController: void
-        ProductController-->>Client: 204 No Content
-    end
-```
-
-#### 6.1.6 Search Products
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: GET /api/products/search?keyword={keyword}
-    ProductController->>+ProductService: searchProducts(keyword)
-    ProductService->>ProductService: Sanitize keyword
-    ProductService->>+ProductRepository: findByNameContainingIgnoreCase(keyword)
-    ProductRepository->>+Database: SELECT * FROM products WHERE LOWER(name) LIKE LOWER(?)
-    Database-->>-ProductRepository: List<Product>
-    ProductRepository-->>-ProductService: List<Product>
-    ProductService-->>-ProductController: List<Product>
-    ProductController-->>-Client: 200 OK + List<Product>
-```
-
-#### 6.1.7 Filter Products by Category
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: GET /api/products/category/{category}
-    ProductController->>+ProductService: getProductsByCategory(category)
-    ProductService->>+ProductRepository: findByCategory(category)
-    ProductRepository->>+Database: SELECT * FROM products WHERE category = ?
-    Database-->>-ProductRepository: List<Product>
-    ProductRepository-->>-ProductService: List<Product>
-    ProductService-->>-ProductController: List<Product>
-    ProductController-->>-Client: 200 OK + List<Product>
-```
-
-### 6.2 Shopping Cart Management Flows
-
-#### 6.2.1 Add to Cart
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ShoppingCartController
-    participant ShoppingCartService
-    participant ProductService
-    participant ShoppingCartRepository
-    participant CartItemRepository
-    participant Database
-    
-    Client->>+ShoppingCartController: POST /api/cart/add
-    Note over Client,ShoppingCartController: Body: {userId, productId, quantity}
-    
-    ShoppingCartController->>+ShoppingCartService: addToCart(userId, productId, quantity)
-    
-    %% Validate Product
-    ShoppingCartService->>+ProductService: getProductById(productId)
-    ProductService->>Database: SELECT * FROM products WHERE id = ?
-    
-    alt Product Not Found
-        Database-->>ProductService: Empty
-        ProductService-->>-ShoppingCartService: null
-        ShoppingCartService-->>-ShoppingCartController: throws ProductNotFoundException
-        ShoppingCartController-->>-Client: 404 Not Found
-    else Product Found
-        Database-->>ProductService: Product
-        ProductService-->>ShoppingCartService: Product
-        
-        %% Check Stock
-        ShoppingCartService->>ShoppingCartService: Validate stock >= quantity
-        
-        alt Insufficient Stock
-            ShoppingCartService-->>ShoppingCartController: throws InsufficientStockException
-            ShoppingCartController-->>Client: 400 Bad Request
-        else Stock Available
-            %% Get or Create Cart
-            ShoppingCartService->>+ShoppingCartRepository: findByUserId(userId)
-            ShoppingCartRepository->>Database: SELECT * FROM shopping_carts WHERE user_id = ?
-            
-            alt Cart Exists
-                Database-->>ShoppingCartRepository: ShoppingCart
-            else Cart Not Found
-                Database-->>ShoppingCartRepository: Empty
-                ShoppingCartRepository->>Database: INSERT INTO shopping_carts
-                Database-->>ShoppingCartRepository: New ShoppingCart
-            end
-            
-            ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
-            
-            %% Check if item already in cart
-            ShoppingCartService->>+CartItemRepository: findByCartIdAndProductId(cartId, productId)
-            CartItemRepository->>Database: SELECT * FROM cart_items WHERE cart_id = ? AND product_id = ?
-            
-            alt Item Exists
-                Database-->>CartItemRepository: CartItem
-                CartItemRepository-->>-ShoppingCartService: CartItem
-                ShoppingCartService->>ShoppingCartService: Update quantity
-                ShoppingCartService->>+CartItemRepository: save(updatedItem)
-                CartItemRepository->>Database: UPDATE cart_items SET quantity = ?, subtotal = ?
-            else New Item
-                Database-->>CartItemRepository: Empty
-                CartItemRepository-->>ShoppingCartService: null
-                ShoppingCartService->>ShoppingCartService: Create new CartItem
-                ShoppingCartService->>+CartItemRepository: save(newItem)
-                CartItemRepository->>Database: INSERT INTO cart_items
-            end
-            
-            Database-->>-CartItemRepository: Saved CartItem
-            CartItemRepository-->>ShoppingCartService: CartItem
-            
-            %% Recalculate total
-            ShoppingCartService->>ShoppingCartService: calculateCartTotal(cart)
-            ShoppingCartService->>+ShoppingCartRepository: save(cart)
-            ShoppingCartRepository->>Database: UPDATE shopping_carts SET total_amount = ?
-            Database-->>-ShoppingCartRepository: Updated Cart
-            ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
-            
-            ShoppingCartService-->>ShoppingCartController: ShoppingCart
-            ShoppingCartController-->>Client: 200 OK + ShoppingCart
-        end
-    end
-```
-
-#### 6.2.2 View Cart
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ShoppingCartController
-    participant ShoppingCartService
-    participant ShoppingCartRepository
-    participant CartItemRepository
-    participant Database
-    
-    Client->>+ShoppingCartController: GET /api/cart/{userId}
-    ShoppingCartController->>+ShoppingCartService: viewCart(userId)
-    
-    ShoppingCartService->>+ShoppingCartRepository: findByUserId(userId)
-    ShoppingCartRepository->>+Database: SELECT * FROM shopping_carts WHERE user_id = ?
-    
-    alt Cart Not Found
-        Database-->>-ShoppingCartRepository: Empty
-        ShoppingCartRepository-->>-ShoppingCartService: Optional.empty()
-        ShoppingCartService-->>-ShoppingCartController: null
-        ShoppingCartController-->>-Client: 404 Not Found
-    else Cart Found
-        Database-->>ShoppingCartRepository: ShoppingCart
-        ShoppingCartRepository-->>ShoppingCartService: Optional<ShoppingCart>
-        
-        %% Load cart items
-        ShoppingCartService->>+CartItemRepository: findByCartId(cartId)
-        CartItemRepository->>+Database: SELECT * FROM cart_items WHERE cart_id = ?
-        Database-->>-CartItemRepository: List<CartItem>
-        CartItemRepository-->>-ShoppingCartService: List<CartItem>
-        
-        ShoppingCartService->>ShoppingCartService: Populate cart.items
-        ShoppingCartService-->>ShoppingCartController: ShoppingCart
-        ShoppingCartController-->>Client: 200 OK + ShoppingCart with items
-    end
-```
-
-#### 6.2.3 Update Cart Item Quantity
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ShoppingCartController
-    participant ShoppingCartService
-    participant ProductService
-    participant ShoppingCartRepository
-    participant CartItemRepository
-    participant Database
-    
-    Client->>+ShoppingCartController: PUT /api/cart/update
-    Note over Client,ShoppingCartController: Body: {userId, productId, quantity}
-    
-    ShoppingCartController->>+ShoppingCartService: updateCartItemQuantity(userId, productId, quantity)
-    
-    %% Validate quantity
-    alt Quantity <= 0
-        ShoppingCartService-->>-ShoppingCartController: throws InvalidQuantityException
-        ShoppingCartController-->>-Client: 400 Bad Request
-    else Valid Quantity
-        %% Get cart
-        ShoppingCartService->>+ShoppingCartRepository: findByUserId(userId)
-        ShoppingCartRepository->>+Database: SELECT * FROM shopping_carts WHERE user_id = ?
-        
-        alt Cart Not Found
-            Database-->>-ShoppingCartRepository: Empty
-            ShoppingCartRepository-->>-ShoppingCartService: Optional.empty()
-            ShoppingCartService-->>ShoppingCartController: throws CartNotFoundException
-            ShoppingCartController-->>Client: 404 Not Found
-        else Cart Found
-            Database-->>ShoppingCartRepository: ShoppingCart
-            ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
-            
-            %% Find cart item
-            ShoppingCartService->>+CartItemRepository: findByCartIdAndProductId(cartId, productId)
-            CartItemRepository->>+Database: SELECT * FROM cart_items WHERE cart_id = ? AND product_id = ?
-            
-            alt Item Not Found
-                Database-->>-CartItemRepository: Empty
-                CartItemRepository-->>-ShoppingCartService: null
-                ShoppingCartService-->>ShoppingCartController: throws ItemNotFoundException
-                ShoppingCartController-->>Client: 404 Not Found
-            else Item Found
-                Database-->>CartItemRepository: CartItem
-                CartItemRepository-->>ShoppingCartService: CartItem
-                
-                %% Validate stock
-                ShoppingCartService->>+ProductService: getProductById(productId)
-                ProductService->>Database: SELECT * FROM products WHERE id = ?
-                Database-->>ProductService: Product
-                ProductService-->>-ShoppingCartService: Product
-                
-                ShoppingCartService->>ShoppingCartService: Validate stock >= quantity
-                
-                alt Insufficient Stock
-                    ShoppingCartService-->>ShoppingCartController: throws InsufficientStockException
-                    ShoppingCartController-->>Client: 400 Bad Request
-                else Stock Available
-                    %% Update item
-                    ShoppingCartService->>ShoppingCartService: Update item quantity and subtotal
-                    ShoppingCartService->>+CartItemRepository: save(updatedItem)
-                    CartItemRepository->>+Database: UPDATE cart_items SET quantity = ?, subtotal = ?
-                    Database-->>-CartItemRepository: Updated CartItem
-                    CartItemRepository-->>-ShoppingCartService: CartItem
-                    
-                    %% Recalculate total
-                    ShoppingCartService->>ShoppingCartService: calculateCartTotal(cart)
-                    ShoppingCartService->>+ShoppingCartRepository: save(cart)
-                    ShoppingCartRepository->>+Database: UPDATE shopping_carts SET total_amount = ?
-                    Database-->>-ShoppingCartRepository: Updated Cart
-                    ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
-                    
-                    ShoppingCartService-->>ShoppingCartController: ShoppingCart
-                    ShoppingCartController-->>Client: 200 OK + ShoppingCart
-                end
-            end
-        end
-    end
-```
-
-#### 6.2.4 Remove Item from Cart
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ShoppingCartController
-    participant ShoppingCartService
-    participant ShoppingCartRepository
-    participant CartItemRepository
-    participant Database
-    
-    Client->>+ShoppingCartController: DELETE /api/cart/remove
-    Note over Client,ShoppingCartController: Body: {userId, productId}
-    
-    ShoppingCartController->>+ShoppingCartService: removeFromCart(userId, productId)
-    
-    %% Get cart
-    ShoppingCartService->>+ShoppingCartRepository: findByUserId(userId)
-    ShoppingCartRepository->>+Database: SELECT * FROM shopping_carts WHERE user_id = ?
-    
-    alt Cart Not Found
-        Database-->>-ShoppingCartRepository: Empty
-        ShoppingCartRepository-->>-ShoppingCartService: Optional.empty()
-        ShoppingCartService-->>-ShoppingCartController: throws CartNotFoundException
-        ShoppingCartController-->>-Client: 404 Not Found
-    else Cart Found
-        Database-->>ShoppingCartRepository: ShoppingCart
-        ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
-        
-        %% Find and delete item
-        ShoppingCartService->>+CartItemRepository: findByCartIdAndProductId(cartId, productId)
-        CartItemRepository->>+Database: SELECT * FROM cart_items WHERE cart_id = ? AND product_id = ?
-        
-        alt Item Not Found
-            Database-->>-CartItemRepository: Empty
-            CartItemRepository-->>-ShoppingCartService: null
-            ShoppingCartService-->>ShoppingCartController: throws ItemNotFoundException
-            ShoppingCartController-->>Client: 404 Not Found
-        else Item Found
-            Database-->>CartItemRepository: CartItem
-            CartItemRepository-->>ShoppingCartService: CartItem
-            
-            ShoppingCartService->>+CartItemRepository: delete(cartItem)
-            CartItemRepository->>+Database: DELETE FROM cart_items WHERE id = ?
-            Database-->>-CartItemRepository: Success
-            CartItemRepository-->>-ShoppingCartService: void
-            
-            %% Recalculate total
-            ShoppingCartService->>ShoppingCartService: calculateCartTotal(cart)
-            ShoppingCartService->>+ShoppingCartRepository: save(cart)
-            ShoppingCartRepository->>+Database: UPDATE shopping_carts SET total_amount = ?
-            Database-->>-ShoppingCartRepository: Updated Cart
-            ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
-            
-            ShoppingCartService-->>ShoppingCartController: ShoppingCart
-            ShoppingCartController-->>Client: 200 OK + ShoppingCart
-        end
-    end
-```
-
----
-
-## 7. API Specifications
-
-### 7.1 Product Management APIs
-
-| Method | Endpoint | Description | Request Body | Response | Status Codes |
-|--------|----------|-------------|--------------|----------|-------------|
-| GET | `/api/products` | Retrieve all products | None | `List<Product>` | 200 OK |
-| GET | `/api/products/{id}` | Retrieve product by ID | None | `Product` | 200 OK, 404 Not Found |
-| POST | `/api/products` | Create new product | `Product` JSON | `Product` | 201 Created, 400 Bad Request |
-| PUT | `/api/products/{id}` | Update existing product | `Product` JSON | `Product` | 200 OK, 404 Not Found, 400 Bad Request |
-| DELETE | `/api/products/{id}` | Delete product | None | None | 204 No Content, 404 Not Found |
-| GET | `/api/products/search?keyword={keyword}` | Search products by name | None | `List<Product>` | 200 OK |
-| GET | `/api/products/category/{category}` | Filter products by category | None | `List<Product>` | 200 OK |
-
-#### Product Request/Response Schema
-
-```json
-{
-  "id": 1,
-  "name": "Laptop",
-  "description": "High-performance laptop",
-  "price": 999.99,
-  "category": "Electronics",
-  "stockQuantity": 50,
-  "createdAt": "2024-01-01T10:00:00",
-  "updatedAt": "2024-01-01T10:00:00"
-}
-```
-
-### 7.2 Shopping Cart Management APIs
-
-| Method | Endpoint | Description | Request Body | Response | Status Codes |
-|--------|----------|-------------|--------------|----------|-------------|
-| POST | `/api/cart/add` | Add item to cart | `{userId, productId, quantity}` | `ShoppingCart` | 200 OK, 404 Not Found, 400 Bad Request |
-| GET | `/api/cart/{userId}` | View user's cart | None | `ShoppingCart` | 200 OK, 404 Not Found |
-| PUT | `/api/cart/update` | Update item quantity | `{userId, productId, quantity}` | `ShoppingCart` | 200 OK, 404 Not Found, 400 Bad Request |
-| DELETE | `/api/cart/remove` | Remove item from cart | `{userId, productId}` | `ShoppingCart` | 200 OK, 404 Not Found |
-
-#### Shopping Cart Request/Response Schemas
-
-**Add to Cart Request:**
-```json
-{
-  "userId": 123,
-  "productId": 456,
-  "quantity": 2
-}
-```
-
-**Update Quantity Request:**
-```json
-{
-  "userId": 123,
-  "productId": 456,
-  "quantity": 5
-}
-```
-
-**Remove Item Request:**
-```json
-{
-  "userId": 123,
-  "productId": 456
-}
-```
-
-**Shopping Cart Response:**
-```json
-{
-  "id": 1,
-  "userId": 123,
-  "items": [
-    {
-      "id": 1,
-      "cartId": 1,
-      "productId": 456,
-      "productName": "Laptop",
-      "productPrice": 999.99,
-      "quantity": 2,
-      "subtotal": 1999.98,
-      "addedAt": "2024-01-01T10:00:00"
-    }
-  ],
-  "totalAmount": 1999.98,
-  "createdAt": "2024-01-01T09:00:00",
-  "updatedAt": "2024-01-01T10:00:00"
-}
-```
-
----
-
-## 8. Database Design
-
-### 8.1 Tables and Schemas
-
-#### Products Table
+#### 5.2.2 Products Table
 
 ```sql
 CREATE TABLE products (
@@ -1134,35 +603,39 @@ CREATE TABLE products (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     price DECIMAL(10, 2) NOT NULL CHECK (price >= 0),
-    category VARCHAR(100),
     stock_quantity INTEGER NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    sku VARCHAR(100) UNIQUE NOT NULL,
+    category_id BIGINT NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
 );
 
--- Indexes for performance
-CREATE INDEX idx_products_category ON products(category);
+CREATE INDEX idx_products_category ON products(category_id);
+CREATE INDEX idx_products_sku ON products(sku);
 CREATE INDEX idx_products_name ON products(name);
-CREATE INDEX idx_products_created_at ON products(created_at DESC);
+CREATE INDEX idx_products_price ON products(price);
+CREATE INDEX idx_products_active ON products(active);
 ```
 
-#### Shopping Carts Table
+#### 5.2.3 Shopping Carts Table
 
 ```sql
 CREATE TABLE shopping_carts (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL UNIQUE,
-    total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    user_id BIGINT NOT NULL,
+    total_amount DECIMAL(10, 2) DEFAULT 0.00 CHECK (total_amount >= 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Indexes for performance
-CREATE UNIQUE INDEX idx_shopping_carts_user_id ON shopping_carts(user_id);
-CREATE INDEX idx_shopping_carts_updated_at ON shopping_carts(updated_at DESC);
+CREATE UNIQUE INDEX idx_shopping_carts_user ON shopping_carts(user_id);
+CREATE INDEX idx_shopping_carts_updated ON shopping_carts(updated_at);
 ```
 
-#### Cart Items Table
+#### 5.2.4 Cart Items Table
 
 ```sql
 CREATE TABLE cart_items (
@@ -1170,245 +643,834 @@ CREATE TABLE cart_items (
     cart_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
     product_name VARCHAR(255) NOT NULL,
-    product_price DECIMAL(10, 2) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL CHECK (price >= 0),
     quantity INTEGER NOT NULL CHECK (quantity > 0),
-    subtotal DECIMAL(10, 2) NOT NULL,
-    added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_cart_items_cart FOREIGN KEY (cart_id) REFERENCES shopping_carts(id) ON DELETE CASCADE,
-    CONSTRAINT fk_cart_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+    subtotal DECIMAL(10, 2) NOT NULL CHECK (subtotal >= 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cart FOREIGN KEY (cart_id) REFERENCES shopping_carts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
     CONSTRAINT uk_cart_product UNIQUE (cart_id, product_id)
 );
 
--- Indexes for performance
-CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
-CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
-CREATE UNIQUE INDEX idx_cart_items_cart_product ON cart_items(cart_id, product_id);
+CREATE INDEX idx_cart_items_cart ON cart_items(cart_id);
+CREATE INDEX idx_cart_items_product ON cart_items(product_id);
 ```
 
-### 8.2 Indexes and Constraints
+### 5.3 Database Constraints and Rules
 
-#### Primary Keys
-- All tables use `BIGSERIAL` for auto-incrementing primary keys
-- Provides sufficient range for large-scale applications (up to 9,223,372,036,854,775,807 records)
-
-#### Foreign Keys
-- `cart_items.cart_id` → `shopping_carts.id` (CASCADE on delete)
-- `cart_items.product_id` → `products.id` (RESTRICT on delete to prevent orphaned cart items)
-
-#### Unique Constraints
-- `shopping_carts.user_id`: One cart per user
-- `cart_items(cart_id, product_id)`: One entry per product per cart
-
-#### Check Constraints
-- `products.price >= 0`: Prevents negative prices
-- `products.stock_quantity >= 0`: Prevents negative stock
-- `cart_items.quantity > 0`: Ensures positive quantities
-
-#### Indexes Strategy
-1. **Primary Key Indexes**: Automatically created on all `id` columns
-2. **Foreign Key Indexes**: Created on `cart_id` and `product_id` for join performance
-3. **Search Indexes**: Created on `products.name` and `products.category` for filtering
-4. **Unique Indexes**: Enforce business rules (one cart per user, one product per cart)
-5. **Timestamp Indexes**: Support sorting by creation/update time
-
-### 8.3 Data Models
-
-#### Product Entity
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | Long | PK, Auto-increment | Unique identifier |
-| name | String(255) | NOT NULL | Product name |
-| description | Text | Nullable | Detailed description |
-| price | BigDecimal(10,2) | NOT NULL, >= 0 | Product price |
-| category | String(100) | Nullable | Product category |
-| stockQuantity | Integer | NOT NULL, >= 0, Default 0 | Available stock |
-| createdAt | Timestamp | NOT NULL, Auto | Creation timestamp |
-| updatedAt | Timestamp | NOT NULL, Auto | Last update timestamp |
-
-#### ShoppingCart Entity
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | Long | PK, Auto-increment | Unique identifier |
-| userId | Long | NOT NULL, Unique | User identifier |
-| items | List<CartItem> | One-to-Many | Cart items collection |
-| totalAmount | BigDecimal(10,2) | NOT NULL, Default 0.00 | Total cart value |
-| createdAt | Timestamp | NOT NULL, Auto | Creation timestamp |
-| updatedAt | Timestamp | NOT NULL, Auto | Last update timestamp |
-
-#### CartItem Entity
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | Long | PK, Auto-increment | Unique identifier |
-| cartId | Long | FK, NOT NULL | Reference to shopping cart |
-| productId | Long | FK, NOT NULL | Reference to product |
-| productName | String(255) | NOT NULL | Denormalized product name |
-| productPrice | BigDecimal(10,2) | NOT NULL | Price at time of adding |
-| quantity | Integer | NOT NULL, > 0 | Item quantity |
-| subtotal | BigDecimal(10,2) | NOT NULL, Calculated | quantity × productPrice |
-| addedAt | Timestamp | NOT NULL, Auto | When item was added |
+**Business Rules Enforced:**
+1. Product price must be non-negative
+2. Stock quantity cannot be negative
+3. Cart item quantity must be positive
+4. Subtotal must be non-negative
+5. One cart per user (unique constraint)
+6. Cannot delete product if referenced in active carts
+7. Cascade delete cart items when cart is deleted
 
 ---
 
-## 9. Technical Specifications
+## 6. API Design
 
-### 9.1 Technology Stack
+### 6.1 Product Management API Endpoints
 
-#### Backend Framework
-- **Spring Boot**: 3.x
-- **Java**: 21 (LTS)
-- **Spring Data JPA**: For data access layer
-- **Spring Web**: For REST API development
+#### 6.1.1 Create Product
 
-#### Database
-- **PostgreSQL**: 15.x or higher
-- **Connection Pooling**: HikariCP (default in Spring Boot)
-- **Migration Tool**: Flyway or Liquibase (recommended)
+**Endpoint:** `POST /api/v1/products`
 
-#### Build Tool
-- **Maven**: 3.8+ or **Gradle**: 8.x
+**Request Body:**
+```json
+{
+  "name": "Laptop",
+  "description": "High-performance laptop",
+  "price": 999.99,
+  "stockQuantity": 50,
+  "sku": "LAP-001",
+  "categoryId": 1,
+  "active": true
+}
+```
 
-#### Additional Libraries
-- **Lombok**: Reduce boilerplate code
-- **MapStruct**: DTO mapping
-- **Hibernate Validator**: Bean validation
-- **SpringDoc OpenAPI**: API documentation
+**Response:** `201 Created`
+```json
+{
+  "id": 1,
+  "name": "Laptop",
+  "description": "High-performance laptop",
+  "price": 999.99,
+  "stockQuantity": 50,
+  "sku": "LAP-001",
+  "categoryId": 1,
+  "categoryName": "Electronics",
+  "active": true
+}
+```
 
-#### Development Tools
-- **IDE**: IntelliJ IDEA / Eclipse / VS Code
-- **API Testing**: Postman / Swagger UI
-- **Database Client**: DBeaver / pgAdmin
+#### 6.1.2 Get Product
 
-### 9.2 Design Patterns
+**Endpoint:** `GET /api/v1/products/{id}`
 
-#### 1. Layered Architecture Pattern
-- **Presentation Layer**: Controllers handle HTTP requests/responses
-- **Business Logic Layer**: Services contain business rules
-- **Data Access Layer**: Repositories manage database operations
-- **Domain Layer**: Entities represent business objects
+**Response:** `200 OK`
+```json
+{
+  "id": 1,
+  "name": "Laptop",
+  "description": "High-performance laptop",
+  "price": 999.99,
+  "stockQuantity": 50,
+  "sku": "LAP-001",
+  "categoryId": 1,
+  "categoryName": "Electronics",
+  "active": true
+}
+```
+
+#### 6.1.3 Update Product
+
+**Endpoint:** `PUT /api/v1/products/{id}`
+
+**Request Body:**
+```json
+{
+  "name": "Laptop Pro",
+  "description": "High-performance laptop with upgraded specs",
+  "price": 1299.99,
+  "stockQuantity": 45,
+  "sku": "LAP-001",
+  "categoryId": 1,
+  "active": true
+}
+```
+
+**Response:** `200 OK`
+
+#### 6.1.4 Delete Product
+
+**Endpoint:** `DELETE /api/v1/products/{id}`
+
+**Response:** `204 No Content`
+
+#### 6.1.5 Get All Products
+
+**Endpoint:** `GET /api/v1/products?page=0&size=20&sort=name,asc`
+
+**Response:** `200 OK`
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "name": "Laptop",
+      "price": 999.99,
+      "stockQuantity": 50
+    }
+  ],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 20
+  },
+  "totalElements": 100,
+  "totalPages": 5
+}
+```
+
+#### 6.1.6 Search Products
+
+**Endpoint:** `GET /api/v1/products/search?query=laptop&page=0&size=20`
+
+**Response:** `200 OK`
+
+### 6.2 Shopping Cart Management API Endpoints
+
+#### 6.2.1 Get Cart
+
+**Endpoint:** `GET /api/v1/carts/{userId}`
+
+**Response:** `200 OK`
+```json
+{
+  "id": 1,
+  "userId": 123,
+  "items": [
+    {
+      "id": 1,
+      "productId": 456,
+      "productName": "Laptop",
+      "price": 999.99,
+      "quantity": 2,
+      "subtotal": 1999.98
+    }
+  ],
+  "totalAmount": 1999.98,
+  "createdAt": "2024-01-15T10:30:00",
+  "updatedAt": "2024-01-15T11:45:00"
+}
+```
+
+#### 6.2.2 Add Item to Cart
+
+**Endpoint:** `POST /api/v1/carts/{userId}/items`
+
+**Request Body:**
+```json
+{
+  "productId": 456,
+  "quantity": 2
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "id": 1,
+  "userId": 123,
+  "items": [
+    {
+      "id": 1,
+      "productId": 456,
+      "productName": "Laptop",
+      "price": 999.99,
+      "quantity": 2,
+      "subtotal": 1999.98
+    }
+  ],
+  "totalAmount": 1999.98
+}
+```
+
+#### 6.2.3 Update Cart Item
+
+**Endpoint:** `PUT /api/v1/carts/{userId}/items/{itemId}`
+
+**Request Body:**
+```json
+{
+  "quantity": 3
+}
+```
+
+**Response:** `200 OK`
+
+#### 6.2.4 Remove Item from Cart
+
+**Endpoint:** `DELETE /api/v1/carts/{userId}/items/{itemId}`
+
+**Response:** `200 OK`
+
+#### 6.2.5 Clear Cart
+
+**Endpoint:** `DELETE /api/v1/carts/{userId}`
+
+**Response:** `204 No Content`
+
+### 6.3 API Error Responses
+
+**400 Bad Request:**
+```json
+{
+  "timestamp": "2024-01-15T10:30:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Invalid product data",
+  "path": "/api/v1/products"
+}
+```
+
+**404 Not Found:**
+```json
+{
+  "timestamp": "2024-01-15T10:30:00",
+  "status": 404,
+  "error": "Not Found",
+  "message": "Product not found with id: 999",
+  "path": "/api/v1/products/999"
+}
+```
+
+**500 Internal Server Error:**
+```json
+{
+  "timestamp": "2024-01-15T10:30:00",
+  "status": 500,
+  "error": "Internal Server Error",
+  "message": "An unexpected error occurred",
+  "path": "/api/v1/products"
+}
+```
+
+---
+
+## 7. Sequence Diagrams
+
+### 7.1 Create Product Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ProductController
+    participant Service as ProductService
+    participant Repository as ProductRepository
+    participant DB as Database
+    
+    Client->>Controller: POST /api/v1/products
+    Controller->>Controller: Validate Request
+    Controller->>Service: createProduct(productDTO)
+    Service->>Service: Validate Business Rules
+    Service->>Repository: save(product)
+    Repository->>DB: INSERT INTO products
+    DB-->>Repository: Product Entity
+    Repository-->>Service: Product
+    Service->>Service: Map to DTO
+    Service-->>Controller: ProductDTO
+    Controller-->>Client: 201 Created + ProductDTO
+```
+
+### 7.2 Get Product Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ProductController
+    participant Service as ProductService
+    participant Repository as ProductRepository
+    participant Cache as Redis Cache
+    participant DB as Database
+    
+    Client->>Controller: GET /api/v1/products/{id}
+    Controller->>Service: getProductById(id)
+    Service->>Cache: get("product:" + id)
+    alt Cache Hit
+        Cache-->>Service: ProductDTO
+    else Cache Miss
+        Service->>Repository: findById(id)
+        Repository->>DB: SELECT * FROM products WHERE id = ?
+        DB-->>Repository: Product Entity
+        Repository-->>Service: Optional<Product>
+        Service->>Service: Map to DTO
+        Service->>Cache: set("product:" + id, productDTO)
+    end
+    Service-->>Controller: ProductDTO
+    Controller-->>Client: 200 OK + ProductDTO
+```
+
+### 7.3 Update Product Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ProductController
+    participant Service as ProductService
+    participant Repository as ProductRepository
+    participant Cache as Redis Cache
+    participant DB as Database
+    
+    Client->>Controller: PUT /api/v1/products/{id}
+    Controller->>Service: updateProduct(id, productDTO)
+    Service->>Repository: findById(id)
+    Repository->>DB: SELECT * FROM products WHERE id = ?
+    DB-->>Repository: Product Entity
+    Repository-->>Service: Optional<Product>
+    Service->>Service: Update Product Fields
+    Service->>Service: Validate Business Rules
+    Service->>Repository: save(product)
+    Repository->>DB: UPDATE products SET ...
+    DB-->>Repository: Updated Product
+    Repository-->>Service: Product
+    Service->>Cache: delete("product:" + id)
+    Service->>Service: Map to DTO
+    Service-->>Controller: ProductDTO
+    Controller-->>Client: 200 OK + ProductDTO
+```
+
+### 7.4 Delete Product Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ProductController
+    participant Service as ProductService
+    participant Repository as ProductRepository
+    participant Cache as Redis Cache
+    participant DB as Database
+    
+    Client->>Controller: DELETE /api/v1/products/{id}
+    Controller->>Service: deleteProduct(id)
+    Service->>Repository: findById(id)
+    Repository->>DB: SELECT * FROM products WHERE id = ?
+    DB-->>Repository: Product Entity
+    Repository-->>Service: Optional<Product>
+    Service->>Service: Check Dependencies
+    Service->>Repository: deleteById(id)
+    Repository->>DB: DELETE FROM products WHERE id = ?
+    DB-->>Repository: Success
+    Repository-->>Service: void
+    Service->>Cache: delete("product:" + id)
+    Service-->>Controller: void
+    Controller-->>Client: 204 No Content
+```
+
+### 7.5 Search Products Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ProductController
+    participant Service as ProductService
+    participant Repository as ProductRepository
+    participant DB as Database
+    
+    Client->>Controller: GET /api/v1/products/search?query=laptop
+    Controller->>Service: searchProducts(query, pageable)
+    Service->>Repository: findByNameContaining(query, pageable)
+    Repository->>DB: SELECT * FROM products WHERE name LIKE ?
+    DB-->>Repository: List<Product>
+    Repository-->>Service: Page<Product>
+    Service->>Service: Map to DTOs
+    Service-->>Controller: Page<ProductDTO>
+    Controller-->>Client: 200 OK + Page<ProductDTO>
+```
+
+### 7.6 Update Inventory Flow
+
+```mermaid
+sequenceDiagram
+    participant System
+    participant Service as ProductService
+    participant Repository as ProductRepository
+    participant DB as Database
+    participant Queue as Message Queue
+    
+    System->>Service: updateInventory(productId, quantity)
+    Service->>Repository: findById(productId)
+    Repository->>DB: SELECT * FROM products WHERE id = ?
+    DB-->>Repository: Product Entity
+    Repository-->>Service: Optional<Product>
+    Service->>Service: Update Stock Quantity
+    Service->>Service: Validate Stock Level
+    Service->>Repository: save(product)
+    Repository->>DB: UPDATE products SET stock_quantity = ?
+    DB-->>Repository: Updated Product
+    Repository-->>Service: Product
+    alt Stock Low
+        Service->>Queue: Publish Low Stock Event
+    end
+    Service-->>System: void
+```
+
+### 7.7 Get All Products with Pagination Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ProductController
+    participant Service as ProductService
+    participant Repository as ProductRepository
+    participant DB as Database
+    
+    Client->>Controller: GET /api/v1/products?page=0&size=20
+    Controller->>Service: getAllProducts(pageable)
+    Service->>Repository: findAll(pageable)
+    Repository->>DB: SELECT * FROM products LIMIT 20 OFFSET 0
+    DB-->>Repository: List<Product>
+    Repository->>DB: SELECT COUNT(*) FROM products
+    DB-->>Repository: Total Count
+    Repository-->>Service: Page<Product>
+    Service->>Service: Map to DTOs
+    Service-->>Controller: Page<ProductDTO>
+    Controller-->>Client: 200 OK + Page<ProductDTO>
+```
+
+### 7.8 Add Item to Cart Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ShoppingCartController
+    participant CartService as ShoppingCartService
+    participant ProductService as ProductService
+    participant CartRepo as ShoppingCartRepository
+    participant ItemRepo as CartItemRepository
+    participant DB as Database
+    
+    Client->>Controller: POST /api/v1/carts/{userId}/items
+    Controller->>CartService: addItemToCart(userId, cartItemDTO)
+    CartService->>ProductService: getProductById(productId)
+    ProductService-->>CartService: ProductDTO
+    CartService->>CartService: Validate Product Availability
+    CartService->>CartRepo: findByUserId(userId)
+    CartRepo->>DB: SELECT * FROM shopping_carts WHERE user_id = ?
+    alt Cart Exists
+        DB-->>CartRepo: ShoppingCart
+    else Cart Not Found
+        CartRepo->>DB: INSERT INTO shopping_carts
+        DB-->>CartRepo: New ShoppingCart
+    end
+    CartRepo-->>CartService: ShoppingCart
+    CartService->>ItemRepo: findByCartIdAndProductId(cartId, productId)
+    ItemRepo->>DB: SELECT * FROM cart_items WHERE cart_id = ? AND product_id = ?
+    alt Item Exists
+        DB-->>ItemRepo: CartItem
+        CartService->>CartService: Update Quantity
+    else Item Not Found
+        CartService->>CartService: Create New CartItem
+    end
+    CartService->>ItemRepo: save(cartItem)
+    ItemRepo->>DB: INSERT/UPDATE cart_items
+    DB-->>ItemRepo: CartItem
+    ItemRepo-->>CartService: CartItem
+    CartService->>CartService: Calculate Cart Total
+    CartService->>CartRepo: save(cart)
+    CartRepo->>DB: UPDATE shopping_carts SET total_amount = ?
+    DB-->>CartRepo: ShoppingCart
+    CartRepo-->>CartService: ShoppingCart
+    CartService->>CartService: Map to DTO
+    CartService-->>Controller: ShoppingCartDTO
+    Controller-->>Client: 200 OK + ShoppingCartDTO
+```
+
+### 7.9 Update Cart Item Quantity Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ShoppingCartController
+    participant CartService as ShoppingCartService
+    participant ProductService as ProductService
+    participant ItemRepo as CartItemRepository
+    participant CartRepo as ShoppingCartRepository
+    participant DB as Database
+    
+    Client->>Controller: PUT /api/v1/carts/{userId}/items/{itemId}
+    Controller->>CartService: updateCartItem(userId, itemId, quantity)
+    CartService->>ItemRepo: findById(itemId)
+    ItemRepo->>DB: SELECT * FROM cart_items WHERE id = ?
+    DB-->>ItemRepo: CartItem
+    ItemRepo-->>CartService: Optional<CartItem>
+    CartService->>ProductService: getProductById(productId)
+    ProductService-->>CartService: ProductDTO
+    CartService->>CartService: Validate Stock Availability
+    CartService->>CartService: Update Quantity
+    CartService->>CartService: Recalculate Subtotal
+    CartService->>ItemRepo: save(cartItem)
+    ItemRepo->>DB: UPDATE cart_items SET quantity = ?, subtotal = ?
+    DB-->>ItemRepo: CartItem
+    ItemRepo-->>CartService: CartItem
+    CartService->>CartService: Recalculate Cart Total
+    CartService->>CartRepo: save(cart)
+    CartRepo->>DB: UPDATE shopping_carts SET total_amount = ?
+    DB-->>CartRepo: ShoppingCart
+    CartRepo-->>CartService: ShoppingCart
+    CartService->>CartService: Map to DTO
+    CartService-->>Controller: ShoppingCartDTO
+    Controller-->>Client: 200 OK + ShoppingCartDTO
+```
+
+### 7.10 Remove Item from Cart Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ShoppingCartController
+    participant CartService as ShoppingCartService
+    participant ItemRepo as CartItemRepository
+    participant CartRepo as ShoppingCartRepository
+    participant DB as Database
+    
+    Client->>Controller: DELETE /api/v1/carts/{userId}/items/{itemId}
+    Controller->>CartService: removeItemFromCart(userId, itemId)
+    CartService->>ItemRepo: findById(itemId)
+    ItemRepo->>DB: SELECT * FROM cart_items WHERE id = ?
+    DB-->>ItemRepo: CartItem
+    ItemRepo-->>CartService: Optional<CartItem>
+    CartService->>CartService: Verify Cart Ownership
+    CartService->>ItemRepo: deleteById(itemId)
+    ItemRepo->>DB: DELETE FROM cart_items WHERE id = ?
+    DB-->>ItemRepo: Success
+    ItemRepo-->>CartService: void
+    CartService->>CartRepo: findByUserId(userId)
+    CartRepo->>DB: SELECT * FROM shopping_carts WHERE user_id = ?
+    DB-->>CartRepo: ShoppingCart
+    CartRepo-->>CartService: ShoppingCart
+    CartService->>CartService: Recalculate Cart Total
+    CartService->>CartRepo: save(cart)
+    CartRepo->>DB: UPDATE shopping_carts SET total_amount = ?
+    DB-->>CartRepo: ShoppingCart
+    CartRepo-->>CartService: ShoppingCart
+    CartService->>CartService: Map to DTO
+    CartService-->>Controller: ShoppingCartDTO
+    Controller-->>Client: 200 OK + ShoppingCartDTO
+```
+
+### 7.11 Clear Cart Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as ShoppingCartController
+    participant CartService as ShoppingCartService
+    participant CartRepo as ShoppingCartRepository
+    participant ItemRepo as CartItemRepository
+    participant DB as Database
+    
+    Client->>Controller: DELETE /api/v1/carts/{userId}
+    Controller->>CartService: clearCart(userId)
+    CartService->>CartRepo: findByUserId(userId)
+    CartRepo->>DB: SELECT * FROM shopping_carts WHERE user_id = ?
+    DB-->>CartRepo: ShoppingCart
+    CartRepo-->>CartService: Optional<ShoppingCart>
+    CartService->>ItemRepo: deleteByCartId(cartId)
+    ItemRepo->>DB: DELETE FROM cart_items WHERE cart_id = ?
+    DB-->>ItemRepo: Success
+    ItemRepo-->>CartService: void
+    CartService->>CartService: Reset Cart Total
+    CartService->>CartRepo: save(cart)
+    CartRepo->>DB: UPDATE shopping_carts SET total_amount = 0
+    DB-->>CartRepo: ShoppingCart
+    CartRepo-->>CartService: ShoppingCart
+    CartService-->>Controller: void
+    Controller-->>Client: 204 No Content
+```
+
+---
+
+## 8. Data Flow Diagrams
+
+### 8.1 Product Creation Data Flow
+
+```mermaid
+flowchart TD
+    A[Client Request] --> B{Validate Input}
+    B -->|Invalid| C[Return 400 Error]
+    B -->|Valid| D[Check Category Exists]
+    D -->|Not Found| E[Return 404 Error]
+    D -->|Found| F[Check SKU Uniqueness]
+    F -->|Duplicate| G[Return 409 Conflict]
+    F -->|Unique| H[Create Product Entity]
+    H --> I[Save to Database]
+    I --> J[Publish Product Created Event]
+    J --> K[Return 201 Created]
+```
+
+### 8.2 Shopping Cart Item Addition Data Flow
+
+```mermaid
+flowchart TD
+    A[Add Item Request] --> B{Validate Product}
+    B -->|Invalid| C[Return 404 Error]
+    B -->|Valid| D{Check Stock}
+    D -->|Out of Stock| E[Return 400 Error]
+    D -->|Available| F{Cart Exists?}
+    F -->|No| G[Create New Cart]
+    F -->|Yes| H[Load Existing Cart]
+    G --> I{Item in Cart?}
+    H --> I
+    I -->|Yes| J[Update Quantity]
+    I -->|No| K[Add New Item]
+    J --> L[Recalculate Subtotal]
+    K --> L
+    L --> M[Update Cart Total]
+    M --> N[Save to Database]
+    N --> O[Return Updated Cart]
+```
+
+### 8.3 End-to-End Shopping Flow
+
+```mermaid
+flowchart TD
+    A[User Browses Products] --> B[Search/Filter Products]
+    B --> C[View Product Details]
+    C --> D{Add to Cart?}
+    D -->|No| B
+    D -->|Yes| E[Add Item to Cart]
+    E --> F{Continue Shopping?}
+    F -->|Yes| B
+    F -->|No| G[View Cart]
+    G --> H{Modify Cart?}
+    H -->|Update Quantity| I[Update Cart Item]
+    H -->|Remove Item| J[Remove from Cart]
+    H -->|No Changes| K[Proceed to Checkout]
+    I --> G
+    J --> G
+    K --> L[Create Order]
+    L --> M[Clear Cart]
+    M --> N[Order Confirmation]
+```
+
+---
+
+## 9. Design Patterns
+
+### 9.1 Layered Architecture Pattern
+
+**Implementation:**
+- **Presentation Layer**: Controllers, DTOs, Request/Response handlers
+- **Business Logic Layer**: Services, Domain models, Business rules
+- **Data Access Layer**: Repositories, Entities, Database operations
+- **Infrastructure Layer**: Configuration, Security, Cross-cutting concerns
 
 **Benefits:**
 - Clear separation of concerns
-- Easy to test each layer independently
-- Maintainable and scalable
+- Easy to test and maintain
+- Flexible to change implementation
 
-#### 2. Repository Pattern
-- Abstracts data access logic
-- Provides a collection-like interface for domain objects
-- Implemented via Spring Data JPA
+### 9.2 Repository Pattern
 
-**Benefits:**
-- Decouples business logic from data access
-- Easy to switch data sources
-- Supports unit testing with mock repositories
-
-#### 3. Service Layer Pattern
-- Encapsulates business logic
-- Coordinates between controllers and repositories
-- Manages transactions
-
-**Benefits:**
-- Reusable business logic
-- Transaction boundary management
-- Clear API for business operations
-
-#### 4. DTO (Data Transfer Object) Pattern
-- Separates internal domain models from API contracts
-- Controls data exposure
-- Validates input data
-
-**Benefits:**
-- API versioning flexibility
-- Security (prevents over-posting)
-- Optimized data transfer
-
-#### 5. Dependency Injection Pattern
-- Spring Framework's core feature
-- Constructor injection for required dependencies
-- Promotes loose coupling
-
-**Benefits:**
-- Testability (easy to mock dependencies)
-- Flexibility (easy to swap implementations)
-- Maintainability
-
-#### 6. Aggregate Pattern (Domain-Driven Design)
-- ShoppingCart acts as an aggregate root
-- CartItems are managed through ShoppingCart
-- Ensures consistency within the aggregate boundary
-
-**Benefits:**
-- Maintains data integrity
-- Clear ownership and lifecycle management
-- Simplified transaction management
-
-### 9.3 Error Handling Strategy
-
-#### Exception Hierarchy
-
+**Implementation:**
 ```java
-// Base exception
-public class EcommerceException extends RuntimeException {
-    private final String errorCode;
-    private final HttpStatus httpStatus;
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    Optional<Product> findById(Long id);
+    Page<Product> findAll(Pageable pageable);
+    List<Product> findByCategoryId(Long categoryId);
 }
+```
 
-// Specific exceptions
-public class ProductNotFoundException extends EcommerceException {
-    public ProductNotFoundException(Long id) {
-        super("Product not found with id: " + id, "PRODUCT_NOT_FOUND", HttpStatus.NOT_FOUND);
-    }
-}
+**Benefits:**
+- Abstracts data access logic
+- Centralized data access code
+- Easy to mock for testing
 
-public class InsufficientStockException extends EcommerceException {
-    public InsufficientStockException(Long productId, int requested, int available) {
-        super(String.format("Insufficient stock for product %d. Requested: %d, Available: %d", 
-              productId, requested, available), "INSUFFICIENT_STOCK", HttpStatus.BAD_REQUEST);
-    }
-}
+### 9.3 Service Layer Pattern
 
-public class CartNotFoundException extends EcommerceException {
-    public CartNotFoundException(Long userId) {
-        super("Cart not found for user: " + userId, "CART_NOT_FOUND", HttpStatus.NOT_FOUND);
-    }
-}
-
-public class InvalidQuantityException extends EcommerceException {
-    public InvalidQuantityException(int quantity) {
-        super("Invalid quantity: " + quantity, "INVALID_QUANTITY", HttpStatus.BAD_REQUEST);
+**Implementation:**
+```java
+@Service
+public class ProductService {
+    private final ProductRepository productRepository;
+    
+    public ProductDTO createProduct(ProductDTO dto) {
+        // Business logic here
     }
 }
 ```
 
-#### Global Exception Handler
+**Benefits:**
+- Encapsulates business logic
+- Reusable across controllers
+- Transaction management
+
+### 9.4 DTO Pattern
+
+**Implementation:**
+```java
+public class ProductDTO {
+    private Long id;
+    private String name;
+    private BigDecimal price;
+    // Getters and setters
+}
+```
+
+**Benefits:**
+- Decouples API from domain model
+- Controls data exposure
+- Validation at API boundary
+
+### 9.5 Aggregate Pattern
+
+**Implementation:**
+The `ShoppingCart` entity acts as an aggregate root that manages the lifecycle and consistency of `CartItem` entities. All operations on cart items must go through the `ShoppingCart` aggregate.
+
+```java
+@Entity
+public class ShoppingCart {
+    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CartItem> items = new ArrayList<>();
+    
+    public void addItem(CartItem item) {
+        items.add(item);
+        item.setCart(this);
+        recalculateTotal();
+    }
+    
+    public void removeItem(Long itemId) {
+        items.removeIf(item -> item.getId().equals(itemId));
+        recalculateTotal();
+    }
+    
+    private void recalculateTotal() {
+        this.totalAmount = items.stream()
+            .map(CartItem::getSubtotal)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+}
+```
+
+**Benefits:**
+- Ensures consistency within aggregate boundaries
+- Encapsulates business rules
+- Simplifies transaction management
+- Maintains invariants
+
+### 9.6 Factory Pattern (for Entity Creation)
+
+**Implementation:**
+```java
+public class CartItemFactory {
+    public static CartItem createCartItem(Product product, int quantity) {
+        CartItem item = new CartItem();
+        item.setProductId(product.getId());
+        item.setProductName(product.getName());
+        item.setPrice(product.getPrice());
+        item.setQuantity(quantity);
+        item.calculateSubtotal();
+        return item;
+    }
+}
+```
+
+---
+
+## 10. Error Handling
+
+### 10.1 Exception Hierarchy
+
+```mermaid
+classDiagram
+    class RuntimeException
+    class BusinessException
+    class ResourceNotFoundException
+    class InvalidDataException
+    class InsufficientStockException
+    class DuplicateResourceException
+    
+    RuntimeException <|-- BusinessException
+    BusinessException <|-- ResourceNotFoundException
+    BusinessException <|-- InvalidDataException
+    BusinessException <|-- InsufficientStockException
+    BusinessException <|-- DuplicateResourceException
+```
+
+### 10.2 Global Exception Handler
 
 ```java
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     
-    @ExceptionHandler(EcommerceException.class)
-    public ResponseEntity<ErrorResponse> handleEcommerceException(EcommerceException ex) {
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException ex) {
         ErrorResponse error = new ErrorResponse(
-            ex.getErrorCode(),
+            HttpStatus.NOT_FOUND.value(),
             ex.getMessage(),
             LocalDateTime.now()
         );
-        return new ResponseEntity<>(error, ex.getHttpStatus());
+        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
     }
     
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getFieldErrors().forEach(error -> 
-            errors.put(error.getField(), error.getDefaultMessage())
-        );
-        
+    @ExceptionHandler(InvalidDataException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidData(InvalidDataException ex) {
         ErrorResponse error = new ErrorResponse(
-            "VALIDATION_ERROR",
-            "Validation failed",
-            errors,
+            HttpStatus.BAD_REQUEST.value(),
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+    
+    @ExceptionHandler(InsufficientStockException.class)
+    public ResponseEntity<ErrorResponse> handleInsufficientStock(InsufficientStockException ex) {
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            ex.getMessage(),
             LocalDateTime.now()
         );
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
@@ -1417,7 +1479,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
         ErrorResponse error = new ErrorResponse(
-            "INTERNAL_ERROR",
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
             "An unexpected error occurred",
             LocalDateTime.now()
         );
@@ -1426,851 +1488,614 @@ public class GlobalExceptionHandler {
 }
 ```
 
-#### Error Response Format
+### 10.3 Error Response Format
 
-```json
-{
-  "errorCode": "PRODUCT_NOT_FOUND",
-  "message": "Product not found with id: 123",
-  "timestamp": "2024-01-01T10:00:00",
-  "details": {}
+```java
+public class ErrorResponse {
+    private int status;
+    private String message;
+    private LocalDateTime timestamp;
+    private List<String> errors;
+    
+    // Constructors, getters, setters
 }
 ```
 
-### 9.4 Validation Rules
-
-#### Product Validation
+### 10.4 Validation Error Handling
 
 ```java
-public class Product {
-    @NotNull(message = "Product name is required")
-    @Size(min = 1, max = 255, message = "Product name must be between 1 and 255 characters")
+@ExceptionHandler(MethodArgumentNotValidException.class)
+public ResponseEntity<ErrorResponse> handleValidationErrors(MethodArgumentNotValidException ex) {
+    List<String> errors = ex.getBindingResult()
+        .getFieldErrors()
+        .stream()
+        .map(error -> error.getField() + ": " + error.getDefaultMessage())
+        .collect(Collectors.toList());
+    
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        "Validation failed",
+        LocalDateTime.now(),
+        errors
+    );
+    
+    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+}
+```
+
+---
+
+## 11. Security Considerations
+
+### 11.1 Authentication & Authorization
+
+**Implementation:**
+- JWT-based authentication
+- Role-based access control (RBAC)
+- Spring Security integration
+
+```java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf().disable()
+            .authorizeHttpRequests()
+                .requestMatchers("/api/v1/products/**").hasAnyRole("USER", "ADMIN")
+                .requestMatchers("/api/v1/carts/**").hasRole("USER")
+                .anyRequest().authenticated()
+            .and()
+            .sessionManagement()
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+        
+        return http.build();
+    }
+}
+```
+
+### 11.2 Input Validation
+
+**Implementation:**
+```java
+public class ProductDTO {
+    @NotBlank(message = "Product name is required")
+    @Size(min = 3, max = 255, message = "Name must be between 3 and 255 characters")
     private String name;
     
-    @Size(max = 5000, message = "Description cannot exceed 5000 characters")
-    private String description;
-    
     @NotNull(message = "Price is required")
-    @DecimalMin(value = "0.0", inclusive = true, message = "Price must be non-negative")
-    @Digits(integer = 8, fraction = 2, message = "Price must have at most 8 integer digits and 2 decimal places")
+    @DecimalMin(value = "0.0", inclusive = false, message = "Price must be greater than 0")
     private BigDecimal price;
     
-    @Size(max = 100, message = "Category cannot exceed 100 characters")
-    private String category;
-    
     @NotNull(message = "Stock quantity is required")
-    @Min(value = 0, message = "Stock quantity must be non-negative")
+    @Min(value = 0, message = "Stock quantity cannot be negative")
     private Integer stockQuantity;
 }
 ```
 
-#### Cart Operation Validation
+### 11.3 SQL Injection Prevention
+
+- Use parameterized queries (JPA/Hibernate)
+- Avoid dynamic SQL construction
+- Input sanitization
+
+### 11.4 Data Encryption
+
+- Encrypt sensitive data at rest
+- Use HTTPS for data in transit
+- Secure password storage with BCrypt
+
+### 11.5 Rate Limiting
 
 ```java
-public class AddToCartRequest {
-    @NotNull(message = "User ID is required")
-    @Positive(message = "User ID must be positive")
-    private Long userId;
+@Configuration
+public class RateLimitConfig {
     
-    @NotNull(message = "Product ID is required")
-    @Positive(message = "Product ID must be positive")
-    private Long productId;
-    
-    @NotNull(message = "Quantity is required")
-    @Min(value = 1, message = "Quantity must be at least 1")
-    @Max(value = 999, message = "Quantity cannot exceed 999")
-    private Integer quantity;
+    @Bean
+    public RateLimiter rateLimiter() {
+        return RateLimiter.create(100.0); // 100 requests per second
+    }
 }
 ```
 
-#### Business Rule Validations
-
-1. **Product Availability**: Verify product exists before adding to cart
-2. **Stock Validation**: Ensure requested quantity doesn't exceed available stock
-3. **Price Validation**: Prevent negative or zero prices
-4. **Quantity Limits**: Enforce minimum (1) and maximum (999) quantities per cart item
-5. **Cart Ownership**: Verify user owns the cart being modified
-6. **Duplicate Prevention**: One product can appear only once per cart (update quantity instead)
-
 ---
 
-## 10. Engineering Considerations
+## 12. Performance & Scalability
 
-### 10.1 Design Assumptions and Constraints
+### 12.1 Caching Strategy
 
-#### Assumptions
-1. **User Management**: User authentication/authorization is handled by a separate service
-2. **Single Currency**: All prices are in a single currency (e.g., USD)
-3. **Synchronous Operations**: All operations are synchronous (no async processing)
-4. **Single Region**: Database is deployed in a single region
-5. **Cart Persistence**: Carts are persisted indefinitely (no automatic expiration)
-6. **Product Availability**: Products can be soft-deleted but not hard-deleted if referenced in carts
-
-#### Constraints
-1. **Database Limits**: PostgreSQL row limit (theoretical: unlimited, practical: billions)
-2. **Price Precision**: Maximum 8 integer digits, 2 decimal places
-3. **String Lengths**: Product name (255), description (5000), category (100)
-4. **Quantity Limits**: Cart item quantity (1-999)
-5. **Concurrent Access**: Optimistic locking for cart updates
-6. **API Rate Limiting**: To be implemented at API Gateway level
-
-### 10.2 Performance Considerations
-
-#### Database Optimization
-
-1. **Indexing Strategy**
-   - Primary key indexes on all tables (automatic)
-   - Foreign key indexes for join performance
-   - Composite index on `cart_items(cart_id, product_id)` for uniqueness and lookups
-   - Index on `products.category` for filtering
-   - Index on `products.name` for search operations
-   - Index on timestamp fields for sorting
-
-2. **Query Optimization**
-   - Use `@EntityGraph` or `JOIN FETCH` to avoid N+1 queries
-   - Fetch cart with items in a single query
-   - Use pagination for product listings
-   - Implement query result caching for frequently accessed data
-
-3. **Connection Pooling**
-   ```properties
-   spring.datasource.hikari.maximum-pool-size=20
-   spring.datasource.hikari.minimum-idle=5
-   spring.datasource.hikari.connection-timeout=30000
-   spring.datasource.hikari.idle-timeout=600000
-   spring.datasource.hikari.max-lifetime=1800000
-   ```
-
-4. **Denormalization**
-   - Store `productName` and `productPrice` in `cart_items` to avoid joins
-   - Calculate and store `subtotal` in `cart_items`
-   - Calculate and store `totalAmount` in `shopping_carts`
-
-#### Application-Level Optimization
-
-1. **Caching Strategy**
-   ```java
-   @Cacheable(value = "products", key = "#id")
-   public Optional<Product> getProductById(Long id) {
-       return productRepository.findById(id);
-   }
-   
-   @CacheEvict(value = "products", key = "#product.id")
-   public Product updateProduct(Product product) {
-       return productRepository.save(product);
-   }
-   ```
-
-2. **Lazy Loading**
-   - Use `@OneToMany(fetch = FetchType.LAZY)` for cart items
-   - Load items only when explicitly accessed
-
-3. **Batch Operations**
-   - Use `saveAll()` for bulk inserts
-   - Configure batch size: `spring.jpa.properties.hibernate.jdbc.batch_size=20`
-
-4. **Response Compression**
-   ```properties
-   server.compression.enabled=true
-   server.compression.mime-types=application/json,application/xml,text/html,text/xml,text/plain
-   ```
-
-### 10.3 Scalability Approach
-
-#### Horizontal Scalability
-
-1. **Stateless Application Design**
-   - No session state stored in application servers
-   - All state persisted in database
-   - Enables running multiple instances behind load balancer
-
-2. **Database Scaling**
-   - **Read Replicas**: Route read operations to replicas
-   - **Connection Pooling**: Efficient connection management
-   - **Partitioning**: Partition large tables by date or user ID
-   - **Sharding**: Distribute data across multiple database instances (future)
-
-3. **Caching Layer**
-   - **Redis/Memcached**: Distributed cache for product data
-   - **Cache Invalidation**: Event-driven cache updates
-   - **Cache Warming**: Pre-populate cache with popular products
-
-4. **Load Balancing**
-   ```
-   Client → Load Balancer → [App Instance 1, App Instance 2, ..., App Instance N]
-   ```
-
-#### Vertical Scalability
-
-1. **Database Resources**
-   - Increase CPU cores for parallel query execution
-   - Increase RAM for larger buffer cache
-   - Use SSD storage for faster I/O
-
-2. **Application Resources**
-   - Increase JVM heap size for larger object cache
-   - Tune garbage collection settings
-   - Optimize thread pool sizes
-
-### 10.4 Security Considerations
-
-#### Input Validation
-
-1. **Request Validation**
-   - Use `@Valid` annotation on controller methods
-   - Validate all user inputs against defined constraints
-   - Sanitize string inputs to prevent XSS
-
-2. **SQL Injection Prevention**
-   - Use parameterized queries (JPA/Hibernate default)
-   - Never concatenate user input into SQL
-   - Use Spring Data JPA query methods
-
-3. **Data Validation**
-   ```java
-   // Example: Prevent negative quantities
-   if (quantity <= 0) {
-       throw new InvalidQuantityException(quantity);
-   }
-   
-   // Example: Verify product exists
-   Product product = productService.getProductById(productId)
-       .orElseThrow(() -> new ProductNotFoundException(productId));
-   ```
-
-#### Authentication & Authorization
-
-1. **JWT Token Validation**
-   - Validate JWT tokens at API Gateway
-   - Extract user ID from token claims
-   - Pass user context to application
-
-2. **Authorization Checks**
-   ```java
-   // Verify user owns the cart
-   if (!cart.getUserId().equals(currentUserId)) {
-       throw new UnauthorizedException("Cannot access another user's cart");
-   }
-   ```
-
-3. **HTTPS Only**
-   - Enforce HTTPS for all API endpoints
-   - Redirect HTTP to HTTPS
-   - Use HSTS headers
-
-#### Data Protection
-
-1. **Sensitive Data**
-   - Never log sensitive information (passwords, tokens)
-   - Mask sensitive data in logs
-   - Use environment variables for secrets
-
-2. **Database Security**
-   - Use strong database passwords
-   - Restrict database access to application servers only
-   - Enable SSL for database connections
-   - Regular security patches and updates
-
-3. **API Security**
-   - Implement rate limiting
-   - Use CORS configuration
-   - Validate content types
-   - Set security headers (X-Frame-Options, X-Content-Type-Options)
-
-### 10.5 Logging and Monitoring
-
-#### Logging Strategy
-
-1. **Log Levels**
-   - **ERROR**: Exceptions and critical failures
-   - **WARN**: Recoverable issues (e.g., insufficient stock)
-   - **INFO**: Important business events (cart created, product added)
-   - **DEBUG**: Detailed diagnostic information (development only)
-
-2. **Structured Logging**
-   ```java
-   @Slf4j
-   public class ShoppingCartService {
-       public ShoppingCart addToCart(Long userId, Long productId, Integer quantity) {
-           log.info("Adding product to cart: userId={}, productId={}, quantity={}", 
-                    userId, productId, quantity);
-           
-           try {
-               // Business logic
-               log.info("Successfully added product to cart: cartId={}, itemId={}", 
-                        cart.getId(), item.getId());
-               return cart;
-           } catch (Exception e) {
-               log.error("Failed to add product to cart: userId={}, productId={}", 
-                         userId, productId, e);
-               throw e;
-           }
-       }
-   }
-   ```
-
-3. **Log Aggregation**
-   - Use ELK Stack (Elasticsearch, Logstash, Kibana)
-   - Centralized log collection from all instances
-   - Log retention policy (e.g., 30 days)
-
-#### Monitoring Metrics
-
-1. **Application Metrics**
-   - Request rate (requests per second)
-   - Response time (p50, p95, p99)
-   - Error rate (4xx, 5xx responses)
-   - Active connections
-   - JVM metrics (heap usage, GC time)
-
-2. **Business Metrics**
-   - Products created/updated/deleted per hour
-   - Cart operations per hour
-   - Average cart value
-   - Most popular products
-   - Cart abandonment rate
-
-3. **Database Metrics**
-   - Query execution time
-   - Connection pool usage
-   - Slow query log
-   - Database size and growth
-   - Index usage statistics
-
-4. **Monitoring Tools**
-   - **Prometheus**: Metrics collection
-   - **Grafana**: Metrics visualization
-   - **Spring Boot Actuator**: Application health and metrics
-   - **APM Tools**: New Relic, Datadog, or Dynatrace
-
-#### Alerting
-
-1. **Critical Alerts**
-   - Application down (health check failure)
-   - Database connection failure
-   - Error rate > 5%
-   - Response time > 2 seconds (p95)
-
-2. **Warning Alerts**
-   - High memory usage (> 80%)
-   - High CPU usage (> 80%)
-   - Database connection pool exhaustion
-   - Disk space low (< 20%)
-
-### 10.6 Transaction Management
-
-#### Transaction Boundaries
-
-1. **Service Layer Transactions**
-   ```java
-   @Service
-   @Transactional
-   public class ShoppingCartService {
-       
-       @Transactional
-       public ShoppingCart addToCart(Long userId, Long productId, Integer quantity) {
-           // All database operations within this method are in a single transaction
-           // Rollback occurs if any exception is thrown
-       }
-       
-       @Transactional(readOnly = true)
-       public Optional<ShoppingCart> viewCart(Long userId) {
-           // Read-only transaction for better performance
-       }
-   }
-   ```
-
-2. **Transaction Propagation**
-   - Default: `REQUIRED` (join existing or create new)
-   - Use `REQUIRES_NEW` for independent transactions
-   - Use `SUPPORTS` for optional transactions
-
-3. **Isolation Levels**
-   ```java
-   @Transactional(isolation = Isolation.READ_COMMITTED)
-   public ShoppingCart updateCartItemQuantity(Long userId, Long productId, Integer quantity) {
-       // Prevents dirty reads
-       // Allows non-repeatable reads and phantom reads
-   }
-   ```
-
-#### Optimistic Locking
-
+**Implementation:**
 ```java
-@Entity
-public class ShoppingCart {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@Service
+public class ProductService {
     
-    @Version
-    private Long version;
+    @Cacheable(value = "products", key = "#id")
+    public ProductDTO getProductById(Long id) {
+        // Database query
+    }
     
-    // Other fields...
+    @CacheEvict(value = "products", key = "#id")
+    public void updateProduct(Long id, ProductDTO dto) {
+        // Update logic
+    }
 }
 ```
 
-**Benefits:**
-- Prevents lost updates in concurrent scenarios
-- Better performance than pessimistic locking
-- Throws `OptimisticLockException` on conflict
+**Cache Configuration:**
+- Redis for distributed caching
+- TTL: 1 hour for product data
+- Cache invalidation on updates
 
-#### Transaction Best Practices
+### 12.2 Database Optimization
 
-1. **Keep Transactions Short**
-   - Minimize transaction duration
-   - Avoid external API calls within transactions
-   - Move heavy computations outside transactions
+**Indexing Strategy:**
+```sql
+CREATE INDEX idx_products_category ON products(category_id);
+CREATE INDEX idx_products_name ON products(name);
+CREATE INDEX idx_products_price ON products(price);
+CREATE INDEX idx_cart_items_cart ON cart_items(cart_id);
+CREATE INDEX idx_shopping_carts_user ON shopping_carts(user_id);
+```
 
-2. **Handle Rollback Scenarios**
-   ```java
-   @Transactional(rollbackFor = Exception.class)
-   public ShoppingCart addToCart(...) {
-       // Rollback on any exception, not just RuntimeException
-   }
-   ```
+**Query Optimization:**
+- Use pagination for large result sets
+- Implement lazy loading for relationships
+- Use database connection pooling (HikariCP)
 
-3. **Avoid Transaction Anti-Patterns**
-   - Don't call `@Transactional` methods from within the same class
-   - Don't catch exceptions without re-throwing in transactional methods
-   - Don't perform long-running operations in transactions
+### 12.3 Pagination
+
+```java
+public Page<ProductDTO> getAllProducts(Pageable pageable) {
+    Page<Product> products = productRepository.findAll(pageable);
+    return products.map(productMapper::toDTO);
+}
+```
+
+### 12.4 Asynchronous Processing
+
+```java
+@Async
+public CompletableFuture<Void> processLowStockAlert(Long productId) {
+    // Send notification asynchronously
+    return CompletableFuture.completedFuture(null);
+}
+```
+
+### 12.5 Horizontal Scaling
+
+- Stateless application design
+- Load balancer distribution
+- Database read replicas
+- Shared cache (Redis cluster)
+
+### 12.6 Performance Metrics
+
+**Target Metrics:**
+- API Response Time: < 200ms (95th percentile)
+- Database Query Time: < 50ms
+- Cache Hit Ratio: > 80%
+- Throughput: 1000 requests/second
 
 ---
 
-## 11. Change Traceability
+## 13. Logging & Monitoring
 
-### 11.1 What Changed
+### 13.1 Logging Strategy
 
-This section documents all changes made to the original Low Level Design document to incorporate the Shopping Cart Management functionality.
+**Implementation:**
+```java
+@Slf4j
+@Service
+public class ProductService {
+    
+    public ProductDTO createProduct(ProductDTO dto) {
+        log.info("Creating product: {}", dto.getName());
+        try {
+            Product product = productMapper.toEntity(dto);
+            product = productRepository.save(product);
+            log.info("Product created successfully with id: {}", product.getId());
+            return productMapper.toDTO(product);
+        } catch (Exception e) {
+            log.error("Error creating product: {}", dto.getName(), e);
+            throw e;
+        }
+    }
+}
+```
 
-#### New Components Added
+**Log Levels:**
+- **ERROR**: System errors, exceptions
+- **WARN**: Business rule violations, deprecated API usage
+- **INFO**: Important business events (create, update, delete)
+- **DEBUG**: Detailed flow information
+- **TRACE**: Very detailed debugging information
 
-1. **ShoppingCartManagement Module**
-   - ShoppingCartController (new)
-   - ShoppingCartService (new)
-   - ShoppingCartRepository (new)
-   - CartItemRepository (new)
-   - ShoppingCart entity (new)
-   - CartItem entity (new)
+### 13.2 Structured Logging
 
-2. **Database Schema**
-   - `shopping_carts` table (new)
-   - `cart_items` table (new)
-   - Foreign key relationships between cart_items, shopping_carts, and products
+```java
+log.info("Product operation", 
+    kv("operation", "create"),
+    kv("productId", product.getId()),
+    kv("userId", userId),
+    kv("duration", duration)
+);
+```
 
-3. **API Endpoints**
-   - POST `/api/cart/add` - Add item to cart
-   - GET `/api/cart/{userId}` - View user's cart
-   - PUT `/api/cart/update` - Update cart item quantity
-   - DELETE `/api/cart/remove` - Remove item from cart
+### 13.3 Monitoring Metrics
 
-4. **Sequence Diagrams**
-   - Add to Cart flow (new)
-   - View Cart flow (new)
-   - Update Cart Item Quantity flow (new)
-   - Remove Item from Cart flow (new)
+**Application Metrics:**
+- Request count and rate
+- Response times (avg, p95, p99)
+- Error rates
+- Active connections
+- JVM metrics (heap, GC)
 
-5. **Integration Points**
-   - ShoppingCartService now integrates with ProductService
-   - Product validation before adding to cart
-   - Stock availability checks
+**Business Metrics:**
+- Products created/updated/deleted
+- Cart operations count
+- Average cart value
+- Conversion rates
 
-6. **Design Patterns**
-   - Added Aggregate Pattern (ShoppingCart as aggregate root)
+### 13.4 Health Checks
 
-#### Enhanced Sections
+```java
+@Component
+public class DatabaseHealthIndicator implements HealthIndicator {
+    
+    @Override
+    public Health health() {
+        try {
+            // Check database connectivity
+            return Health.up()
+                .withDetail("database", "PostgreSQL")
+                .withDetail("status", "Connected")
+                .build();
+        } catch (Exception e) {
+            return Health.down()
+                .withDetail("error", e.getMessage())
+                .build();
+        }
+    }
+}
+```
 
-1. **Project Overview**
-   - Updated to mention both ProductManagement and ShoppingCartManagement modules
-   - Added description of cart functionality
+### 13.5 Alerting
 
-2. **System Architecture**
-   - Added high-level architecture diagram showing both modules
-   - Added component architecture diagram
-   - Added deployment architecture diagram
+**Alert Conditions:**
+- Error rate > 5%
+- Response time > 1 second
+- Database connection pool exhausted
+- Low stock alerts
+- System resource utilization > 80%
 
-3. **Class Diagrams**
-   - Added shopping cart classes
-   - Added integrated class diagram showing relationships between modules
+---
 
-4. **Entity Relationship Diagram**
-   - Updated to show all three tables with relationships
+## 14. Assumptions & Constraints
 
-5. **Technical Specifications**
-   - Expanded error handling with cart-specific exceptions
-   - Added validation rules for cart operations
-   - Enhanced security considerations
+### 14.1 Assumptions
 
-6. **Engineering Considerations**
-   - Added performance considerations for cart operations
-   - Added scalability approach
-   - Added transaction management details
-   - Added logging and monitoring strategy
+1. **User Authentication**: Users are authenticated before accessing cart operations
+2. **Product Availability**: Products are available in the catalog before adding to cart
+3. **Single Currency**: All prices are in a single currency (USD)
+4. **Cart Expiration**: Inactive carts expire after 30 days
+5. **Stock Management**: Real-time stock updates are available
+6. **Network Reliability**: Reasonable network reliability between services
+7. **Database Availability**: PostgreSQL database is highly available
+8. **Concurrent Users**: System supports up to 10,000 concurrent users
 
-### 11.2 Why Changes Were Applied
+### 14.2 Constraints
 
-#### Business Justification
+1. **Technology Stack**: Must use Spring Boot 3.2.x and Java 21
+2. **Database**: PostgreSQL 15+ is mandatory
+3. **API Design**: Must follow RESTful principles
+4. **Response Time**: API responses must be under 200ms (95th percentile)
+5. **Data Retention**: Cart data retained for 30 days
+6. **Maximum Cart Items**: 100 items per cart
+7. **Maximum Quantity**: 999 units per cart item
+8. **Price Precision**: Prices stored with 2 decimal places
+9. **Backward Compatibility**: API changes must be backward compatible
+10. **Security**: All endpoints must be secured with authentication
+
+### 14.3 Business Rules
+
+1. **Product Validation**:
+   - Product name must be unique within a category
+   - Price must be greater than zero
+   - Stock quantity cannot be negative
+
+2. **Cart Validation**:
+   - Cannot add out-of-stock products
+   - Cannot exceed available stock quantity
+   - Cart item quantity must be positive
+   - One active cart per user
+
+3. **Inventory Management**:
+   - Stock is reserved when added to cart (soft reservation)
+   - Stock is decremented on order placement
+   - Low stock threshold: 10 units
+
+4. **Data Integrity**:
+   - Cannot delete products referenced in active carts
+   - Cascade delete cart items when cart is deleted
+   - Maintain referential integrity across tables
+
+---
+
+## 15. Change Traceability
+
+### 15.1 Change Summary
 
 **Story**: SCRUM-1140 - Shopping Cart Management
 
-**Objective**: Enable users to manage their shopping carts, including adding products, viewing cart contents, updating quantities, and removing items.
+**Change Date**: 2024
 
-**Business Value**:
-1. **Enhanced User Experience**: Users can build and manage their shopping carts before checkout
-2. **Increased Conversion**: Persistent carts reduce friction in the purchase process
-3. **Revenue Optimization**: Cart management enables upselling and cross-selling opportunities
-4. **Customer Insights**: Cart data provides valuable analytics on user behavior
+**Change Type**: Feature Addition
 
-#### Technical Justification
+**Impact Level**: High
 
-1. **Modular Design**: Shopping cart functionality is implemented as a separate module, maintaining separation of concerns
-2. **Reusability**: Cart service can be reused across different user interfaces (web, mobile)
-3. **Scalability**: Stateless design allows horizontal scaling
-4. **Data Integrity**: Aggregate pattern ensures cart consistency
-5. **Performance**: Denormalized data in cart_items reduces join operations
+### 15.2 Changes Applied
 
-### 11.3 Impacted Components
+#### 15.2.1 New Modules Added
 
-#### Direct Impact
+| Module | Description | Components |
+|--------|-------------|------------|
+| Shopping Cart Management | Manages user shopping carts and cart items | ShoppingCartController, ShoppingCartService, ShoppingCartRepository, CartItemRepository, ShoppingCart, CartItem |
 
-1. **Database Schema**
-   - Added 2 new tables: `shopping_carts`, `cart_items`
-   - Added foreign key constraints
-   - Added indexes for performance
+#### 15.2.2 New Classes Added
 
-2. **Application Layer**
-   - Added 6 new classes (controller, service, 2 repositories, 2 entities)
-   - Added 4 new API endpoints
-   - Added cart-specific exception classes
+| Class Name | Type | Purpose | Package |
+|------------|------|---------|----------|
+| ShoppingCartController | Controller | REST API endpoints for cart operations | com.ecommerce.controller |
+| ShoppingCartService | Service | Business logic for cart management | com.ecommerce.service |
+| ShoppingCartRepository | Repository | Data access for shopping carts | com.ecommerce.repository |
+| CartItemRepository | Repository | Data access for cart items | com.ecommerce.repository |
+| ShoppingCart | Entity | Domain model for shopping cart | com.ecommerce.entity |
+| CartItem | Entity | Domain model for cart items | com.ecommerce.entity |
 
-3. **Integration Points**
-   - ShoppingCartService depends on ProductService
-   - Cart operations validate products exist and have sufficient stock
+#### 15.2.3 New Database Tables
 
-#### Indirect Impact
+| Table Name | Purpose | Key Relationships |
+|------------|---------|-------------------|
+| shopping_carts | Store user shopping carts | References users table |
+| cart_items | Store items in shopping carts | References shopping_carts and products tables |
 
-1. **Product Module**
-   - Products cannot be hard-deleted if referenced in cart_items (RESTRICT constraint)
-   - Product stock must be validated before adding to cart
-   - Product price changes don't affect existing cart items (denormalized)
+#### 15.2.4 New API Endpoints
 
-2. **Testing**
-   - New unit tests required for cart service
-   - New integration tests for cart APIs
-   - Updated test data to include cart scenarios
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| /api/v1/carts/{userId} | GET | Retrieve user's shopping cart |
+| /api/v1/carts/{userId}/items | POST | Add item to cart |
+| /api/v1/carts/{userId}/items/{itemId} | PUT | Update cart item quantity |
+| /api/v1/carts/{userId}/items/{itemId} | DELETE | Remove item from cart |
+| /api/v1/carts/{userId} | DELETE | Clear entire cart |
 
-3. **Documentation**
-   - API documentation updated with cart endpoints
-   - Database schema documentation updated
-   - Sequence diagrams added for cart flows
+#### 15.2.5 New Sequence Diagrams
 
-4. **Deployment**
-   - Database migration scripts required
-   - No changes to deployment architecture
-   - No changes to infrastructure requirements
+| Diagram | Section | Purpose |
+|---------|---------|----------|
+| Add Item to Cart Flow | 7.8 | Shows the complete flow of adding an item to cart |
+| Update Cart Item Quantity Flow | 7.9 | Shows the flow of updating item quantity |
+| Remove Item from Cart Flow | 7.10 | Shows the flow of removing an item |
+| Clear Cart Flow | 7.11 | Shows the flow of clearing entire cart |
 
-### 11.4 Acceptance Criteria Mapping
+#### 15.2.6 Design Pattern Updates
 
-This section maps the implementation to the acceptance criteria defined in Story SCRUM-1140.
+| Pattern | Change | Justification |
+|---------|--------|---------------|
+| Aggregate Pattern | Added | ShoppingCart acts as aggregate root managing CartItem lifecycle and consistency |
 
-#### AC1: Add Product to Cart
+### 15.3 Acceptance Criteria Mapping
 
-**Criteria**: Users should be able to add a product to their shopping cart by specifying the product ID and quantity.
+#### AC1: View Shopping Cart
+**Implementation:**
+- Endpoint: GET /api/v1/carts/{userId}
+- Service Method: ShoppingCartService.getCartByUserId()
+- Returns: Complete cart with all items, quantities, and total
 
-**Implementation**:
-- **API Endpoint**: POST `/api/cart/add`
-- **Request**: `{userId, productId, quantity}`
-- **Validation**: 
-  - Product exists (via ProductService)
-  - Sufficient stock available
-  - Quantity > 0
-- **Behavior**:
-  - Creates cart if doesn't exist
-  - Adds new item or updates quantity if item exists
-  - Recalculates cart total
-- **Response**: Updated ShoppingCart with items
-- **Sequence Diagram**: Section 6.2.1
+**Components Impacted:**
+- ShoppingCartController
+- ShoppingCartService
+- ShoppingCartRepository
+- Database: shopping_carts, cart_items tables
 
-**Status**: ✅ Fully Implemented
+#### AC2: Add Items to Cart
+**Implementation:**
+- Endpoint: POST /api/v1/carts/{userId}/items
+- Service Method: ShoppingCartService.addItemToCart()
+- Validation: Product availability, stock check
+- Business Logic: Create cart if not exists, update quantity if item exists
 
-#### AC2: View Shopping Cart
+**Components Impacted:**
+- ShoppingCartController
+- ShoppingCartService
+- ProductService (integration)
+- ShoppingCartRepository
+- CartItemRepository
+- Database: shopping_carts, cart_items, products tables
 
-**Criteria**: Users should be able to view their shopping cart, including all items, quantities, and the total price.
+#### AC3: Update Item Quantities
+**Implementation:**
+- Endpoint: PUT /api/v1/carts/{userId}/items/{itemId}
+- Service Method: ShoppingCartService.updateCartItem()
+- Validation: Stock availability check
+- Business Logic: Recalculate subtotal and cart total
 
-**Implementation**:
-- **API Endpoint**: GET `/api/cart/{userId}`
-- **Response**: ShoppingCart object containing:
-  - Cart ID and user ID
-  - List of CartItems with:
-    - Product details (ID, name, price)
-    - Quantity
-    - Subtotal
-  - Total amount
-  - Timestamps
-- **Sequence Diagram**: Section 6.2.2
+**Components Impacted:**
+- ShoppingCartController
+- ShoppingCartService
+- ProductService (integration)
+- CartItemRepository
+- Database: cart_items, shopping_carts tables
 
-**Status**: ✅ Fully Implemented
+#### AC4: Remove Items from Cart
+**Implementation:**
+- Endpoint: DELETE /api/v1/carts/{userId}/items/{itemId}
+- Service Method: ShoppingCartService.removeItemFromCart()
+- Business Logic: Delete item and recalculate cart total
 
-#### AC3: Update Item Quantity
+**Components Impacted:**
+- ShoppingCartController
+- ShoppingCartService
+- CartItemRepository
+- Database: cart_items, shopping_carts tables
 
-**Criteria**: Users should be able to update the quantity of a product in their cart.
+#### AC5: Calculate Cart Total
+**Implementation:**
+- Service Method: ShoppingCartService.calculateCartTotal()
+- Calculation: Sum of all item subtotals
+- Trigger: Automatically calculated on any cart modification
 
-**Implementation**:
-- **API Endpoint**: PUT `/api/cart/update`
-- **Request**: `{userId, productId, quantity}`
-- **Validation**:
-  - Cart exists
-  - Item exists in cart
-  - Product still available
-  - Sufficient stock for new quantity
-  - Quantity > 0
-- **Behavior**:
-  - Updates item quantity
-  - Recalculates subtotal
-  - Recalculates cart total
-- **Response**: Updated ShoppingCart
-- **Sequence Diagram**: Section 6.2.3
+**Components Impacted:**
+- ShoppingCartService
+- ShoppingCart entity (domain logic)
+- Database: shopping_carts table
 
-**Status**: ✅ Fully Implemented
+### 15.4 Integration Points
 
-#### AC4: Remove Item from Cart
+| Integration | Source | Target | Purpose |
+|-------------|--------|--------|----------|
+| Product Validation | ShoppingCartService | ProductService | Validate product exists and check availability |
+| Stock Check | ShoppingCartService | ProductService | Verify sufficient stock before adding to cart |
+| User Validation | ShoppingCartController | Authentication Service | Verify user identity and authorization |
 
-**Criteria**: Users should be able to remove a product from their shopping cart.
+### 15.5 Backward Compatibility
 
-**Implementation**:
-- **API Endpoint**: DELETE `/api/cart/remove`
-- **Request**: `{userId, productId}`
-- **Validation**:
-  - Cart exists
-  - Item exists in cart
-- **Behavior**:
-  - Deletes cart item
-  - Recalculates cart total
-- **Response**: Updated ShoppingCart
-- **Sequence Diagram**: Section 6.2.4
+**Existing Functionality Preserved:**
+- All Product Management APIs remain unchanged
+- Product entity structure unchanged
+- Category management unchanged
+- No breaking changes to existing endpoints
 
-**Status**: ✅ Fully Implemented
+**New Dependencies:**
+- Shopping Cart module depends on Product module
+- No reverse dependencies created
 
-#### AC5: Integration with Product Service
+### 15.6 Testing Impact
 
-**Criteria**: The shopping cart should integrate with the existing Product Management service to validate product availability and pricing.
+**New Test Cases Required:**
+1. Unit tests for ShoppingCartService (8 test cases)
+2. Unit tests for ShoppingCartController (5 test cases)
+3. Integration tests for cart operations (10 test cases)
+4. Repository tests for ShoppingCartRepository and CartItemRepository (6 test cases)
+5. End-to-end tests for complete shopping flow (5 test cases)
 
-**Implementation**:
-- **Integration Point**: ShoppingCartService → ProductService
-- **Validations**:
-  - Product existence check via `ProductService.getProductById()`
-  - Stock availability check via `Product.stockQuantity`
-  - Price retrieval for cart calculations
-- **Error Handling**:
-  - ProductNotFoundException if product doesn't exist
-  - InsufficientStockException if stock unavailable
-- **Class Diagram**: Section 4.3 shows integration
-- **Sequence Diagrams**: All cart flows include product validation
+**Total New Tests**: 34 test cases
 
-**Status**: ✅ Fully Implemented
+### 15.7 Documentation Updates
 
----
+**Updated Sections:**
+1. System Architecture (Section 2) - Added cart components
+2. Module Design (Section 3) - Added Shopping Cart Management module
+3. Class Design (Section 4) - Added 6 new classes
+4. Database Design (Section 5) - Added 2 new tables
+5. API Design (Section 6) - Added 5 new endpoints
+6. Sequence Diagrams (Section 7) - Added 4 new diagrams
+7. Design Patterns (Section 9) - Added Aggregate Pattern
 
-## 12. Key Features
+### 15.8 Deployment Considerations
 
-### Product Management Features
+**Database Migration:**
+```sql
+-- Migration script for shopping cart tables
+CREATE TABLE shopping_carts (...);  -- As defined in section 5.2.3
+CREATE TABLE cart_items (...);      -- As defined in section 5.2.4
+```
 
-1. **Complete CRUD Operations**
-   - Create new products with validation
-   - Retrieve all products or by ID
-   - Update existing products
-   - Delete products (with referential integrity checks)
+**Rollback Plan:**
+- Drop cart_items table
+- Drop shopping_carts table
+- Remove cart-related code
 
-2. **Advanced Search and Filtering**
-   - Search products by name (case-insensitive)
-   - Filter products by category
-   - Efficient indexing for fast queries
+**Zero-Downtime Deployment:**
+- Deploy new code with feature flag disabled
+- Run database migrations
+- Enable feature flag
+- Monitor for issues
 
-3. **Data Validation**
-   - Price validation (non-negative, proper precision)
-   - Stock quantity validation (non-negative)
-   - Required field validation
-   - String length constraints
+### 15.9 Performance Impact
 
-4. **Audit Trail**
-   - Automatic timestamp tracking (created_at, updated_at)
-   - Historical data preservation
+**Expected Impact:**
+- Additional database tables: 2
+- Additional API endpoints: 5
+- Additional database queries per cart operation: 2-4
+- Cache strategy: Cart data cached for 15 minutes
 
-### Shopping Cart Management Features
+**Mitigation:**
+- Indexed foreign keys on cart_items table
+- Caching of cart data
+- Optimized queries with proper joins
 
-1. **Cart Operations**
-   - Add products to cart with quantity
-   - View complete cart with all items
-   - Update item quantities
-   - Remove items from cart
-   - Automatic cart creation for new users
+### 15.10 Security Impact
 
-2. **Real-time Calculations**
-   - Automatic subtotal calculation per item
-   - Automatic total amount calculation for cart
-   - Price snapshot at time of adding (denormalized)
+**New Security Considerations:**
+- Cart operations require user authentication
+- Users can only access their own carts
+- Cart ownership validation on all operations
+- Rate limiting on cart operations to prevent abuse
 
-3. **Product Integration**
-   - Real-time product validation
-   - Stock availability checks
-   - Product information synchronization
-
-4. **Data Integrity**
-   - One cart per user (unique constraint)
-   - One product per cart (unique constraint on cart_id + product_id)
-   - Cascade delete for cart items when cart is deleted
-   - Prevent product deletion if in any cart
-
-5. **Error Handling**
-   - Comprehensive exception handling
-   - Meaningful error messages
-   - Proper HTTP status codes
-
-### Cross-Cutting Features
-
-1. **RESTful API Design**
-   - Standard HTTP methods (GET, POST, PUT, DELETE)
-   - Proper status codes (200, 201, 204, 400, 404, 500)
-   - JSON request/response format
-   - Clear endpoint naming conventions
-
-2. **Performance Optimization**
-   - Database indexing strategy
-   - Connection pooling
-   - Query optimization
-   - Denormalized data for read performance
-
-3. **Scalability**
-   - Stateless application design
-   - Horizontal scaling capability
-   - Database read replicas support
-   - Caching strategy
-
-4. **Security**
-   - Input validation at multiple layers
-   - SQL injection prevention
-   - Parameterized queries
-   - Error message sanitization
-
-5. **Maintainability**
-   - Layered architecture
-   - Clear separation of concerns
-   - Design patterns implementation
-   - Comprehensive documentation
-
-6. **Observability**
-   - Structured logging
-   - Metrics collection
-   - Health checks
-   - Distributed tracing support
+**Security Controls:**
+- JWT token validation
+- User ID verification
+- Input validation on all cart operations
+- SQL injection prevention through parameterized queries
 
 ---
 
-## 13. Appendix
+## Appendix A: Technology Versions
 
-### A. Glossary
+- **Spring Boot**: 3.2.x
+- **Java**: 21
+- **PostgreSQL**: 15+
+- **Spring Data JPA**: 3.2.x
+- **Hibernate**: 6.4.x
+- **Maven**: 3.9.x
+- **Redis**: 7.x (for caching)
+- **Lombok**: 1.18.x
 
-| Term | Definition |
-|------|------------|
-| **Aggregate** | A cluster of domain objects that can be treated as a single unit (DDD pattern) |
-| **API Gateway** | Entry point for all client requests, handles routing, authentication, rate limiting |
-| **Cascade Delete** | Automatically delete related records when parent record is deleted |
-| **Denormalization** | Storing redundant data to improve read performance |
-| **DTO** | Data Transfer Object - object used to transfer data between layers |
-| **Entity** | Domain object with a unique identity that persists over time |
-| **Foreign Key** | Column that references primary key of another table |
-| **Idempotent** | Operation that produces same result regardless of how many times it's executed |
-| **JPA** | Java Persistence API - specification for ORM in Java |
-| **Optimistic Locking** | Concurrency control that assumes conflicts are rare |
-| **Repository** | Abstraction for data access operations |
-| **REST** | Representational State Transfer - architectural style for web services |
-| **Stateless** | Server doesn't store client session state between requests |
-| **Transaction** | Unit of work that must be completed entirely or not at all |
+## Appendix B: API Response Codes
 
-### B. References
+| Code | Description | Usage |
+|------|-------------|-------|
+| 200 | OK | Successful GET, PUT operations |
+| 201 | Created | Successful POST operations |
+| 204 | No Content | Successful DELETE operations |
+| 400 | Bad Request | Invalid input data |
+| 401 | Unauthorized | Missing or invalid authentication |
+| 403 | Forbidden | Insufficient permissions |
+| 404 | Not Found | Resource not found |
+| 409 | Conflict | Duplicate resource |
+| 500 | Internal Server Error | Unexpected server error |
 
-1. **Spring Framework Documentation**
-   - https://spring.io/projects/spring-boot
-   - https://spring.io/projects/spring-data-jpa
+## Appendix C: Database Naming Conventions
 
-2. **PostgreSQL Documentation**
-   - https://www.postgresql.org/docs/
+- **Tables**: snake_case, plural (e.g., shopping_carts, cart_items)
+- **Columns**: snake_case (e.g., user_id, created_at)
+- **Primary Keys**: id
+- **Foreign Keys**: {table_name}_id (e.g., cart_id, product_id)
+- **Indexes**: idx_{table}_{column} (e.g., idx_products_category)
 
-3. **Design Patterns**
-   - "Design Patterns: Elements of Reusable Object-Oriented Software" by Gang of Four
-   - "Domain-Driven Design" by Eric Evans
+## Appendix D: Code Style Guidelines
 
-4. **REST API Design**
-   - "RESTful Web Services" by Leonard Richardson
-   - https://restfulapi.net/
-
-5. **Database Design**
-   - "Database Design for Mere Mortals" by Michael J. Hernandez
-
-### C. Revision History
-
-| Version | Date | Author | Description |
-|---------|------|--------|-------------|
-| 1.0 | 2024-01-01 | Development Team | Initial LLD for Product Management |
-| 2.0 | 2024-01-15 | Development Team | Added Shopping Cart Management (SCRUM-1140) |
-
-### D. Future Enhancements
-
-1. **Wishlist Management**
-   - Save products for later
-   - Move items between cart and wishlist
-
-2. **Cart Expiration**
-   - Automatic cart cleanup after inactivity period
-   - Notification before cart expiration
-
-3. **Promotions and Discounts**
-   - Apply coupon codes
-   - Automatic discount calculations
-   - Bundle pricing
-
-4. **Inventory Reservation**
-   - Reserve stock when added to cart
-   - Release reservation after timeout
-
-5. **Multi-Currency Support**
-   - Support multiple currencies
-   - Real-time currency conversion
-
-6. **Cart Sharing**
-   - Share cart with other users
-   - Collaborative shopping
-
-7. **Saved Carts**
-   - Multiple carts per user
-   - Named carts (e.g., "Birthday Party", "Office Supplies")
-
-8. **Analytics**
-   - Cart abandonment tracking
-   - Popular product combinations
-   - Average cart value metrics
-
-9. **Recommendations**
-   - "Frequently bought together"
-   - "Customers also viewed"
-   - Personalized recommendations
-
-10. **Performance Enhancements**
-    - Redis caching for cart data
-    - Event-driven architecture for cart updates
-    - Asynchronous processing for non-critical operations
+- **Java**: Follow Google Java Style Guide
+- **Package Structure**: com.ecommerce.{layer}.{module}
+- **Class Naming**: PascalCase
+- **Method Naming**: camelCase
+- **Constants**: UPPER_SNAKE_CASE
+- **Annotations**: Use Lombok for boilerplate reduction
 
 ---
 
-## Document Approval
+**Document End**
 
-| Role | Name | Signature | Date |
-|------|------|-----------|------|
-| Technical Lead | | | |
-| Product Owner | | | |
-| Architecture Review | | | |
-| QA Lead | | | |
+**Approval:**
+- Technical Lead: _________________
+- Product Owner: _________________
+- Date: _________________
 
----
-
-**End of Document**
+**Version History:**
+| Version | Date | Author | Changes |
+|---------|------|--------|----------|
+| 1.0 | 2024 | Engineering Team | Initial Product Management LLD |
+| 2.0 | 2024 | Engineering Team | Added Shopping Cart Management (SCRUM-1140) |
