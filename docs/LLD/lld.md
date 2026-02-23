@@ -51,6 +51,7 @@ classDiagram
         -String description
         -BigDecimal price
         -Integer stockQuantity
+        -Integer maxOrderQuantity
         -String category
         -LocalDateTime createdAt
         -LocalDateTime updatedAt
@@ -64,6 +65,8 @@ classDiagram
         +setPrice(BigDecimal) void
         +getStockQuantity() Integer
         +setStockQuantity(Integer) void
+        +getMaxOrderQuantity() Integer
+        +setMaxOrderQuantity(Integer) void
         +getCategory() String
         +setCategory(String) void
     }
@@ -75,6 +78,7 @@ classDiagram
         -BigDecimal price
         -Integer quantity
         -BigDecimal subtotal
+        -LocalDateTime addedAt
         +getId() Long
         +setId(Long) void
         +getProductId() Long
@@ -85,6 +89,8 @@ classDiagram
         +setPrice(BigDecimal) void
         +getQuantity() Integer
         +setQuantity(Integer) void
+        +getAddedAt() LocalDateTime
+        +setAddedAt(LocalDateTime) void
         +calculateSubtotal() void
     }
 
@@ -132,6 +138,7 @@ classDiagram
         +getProductsByCategory(String) List~Product~
         +searchProducts(String) List~Product~
         +checkStock(Long, Integer) boolean
+        +validateOrderQuantity(Long, Integer) boolean
     }
 
     class CartService {
@@ -174,6 +181,7 @@ erDiagram
         TEXT description
         DECIMAL price
         INTEGER stock_quantity
+        INTEGER max_order_quantity
         VARCHAR category
         TIMESTAMP created_at
         TIMESTAMP updated_at
@@ -186,6 +194,7 @@ erDiagram
         DECIMAL price
         INTEGER quantity
         DECIMAL subtotal
+        TIMESTAMP added_at
     }
 
     SHOPPING_CART {
@@ -298,6 +307,7 @@ sequenceDiagram
   - Name: Required, max 255 characters
   - Price: Required, positive value
   - Stock Quantity: Required, non-negative
+  - Max Order Quantity: Optional, positive value, defaults to stock quantity if not specified
   - Category: Required
 - **Success Response**: 201 Created with product details
 - **Error Response**: 400 Bad Request for validation errors
@@ -459,12 +469,21 @@ sequenceDiagram
         
         alt Stock Available
             ProductService-->>CartService: true
-            CartService->>ShoppingCart: addItem(cartItem)
-            ShoppingCart->>ShoppingCart: calculateSubtotal()
-            ShoppingCart->>ShoppingCart: calculateTotal()
-            ShoppingCart-->>CartService: Updated Cart
-            CartService-->>CartController: CartItem
-            CartController-->>Client: 201 Created + CartItem
+            CartService->>ProductService: validateOrderQuantity(productId, quantity)
+            
+            alt Quantity Valid
+                ProductService-->>CartService: true
+                CartService->>ShoppingCart: addItem(cartItem)
+                ShoppingCart->>ShoppingCart: calculateSubtotal()
+                ShoppingCart->>ShoppingCart: calculateTotal()
+                ShoppingCart-->>CartService: Updated Cart
+                CartService-->>CartController: CartItem
+                CartController-->>Client: 201 Created + CartItem
+            else Exceeds Max Order Quantity
+                ProductService-->>CartService: false
+                CartService-->>CartController: throw MaxOrderQuantityExceededException
+                CartController-->>Client: 400 Bad Request
+            end
         else Insufficient Stock
             ProductService-->>CartService: false
             CartService-->>CartController: throw InsufficientStockException
@@ -484,10 +503,12 @@ sequenceDiagram
   - Product must exist
   - Quantity must be positive
   - Sufficient stock must be available
+  - Quantity must not exceed max order quantity limit
 - **Success Response**: 201 Created with cart item details
 - **Error Responses**:
   - 404 Not Found if product doesn't exist
   - 400 Bad Request if insufficient stock
+  - 400 Bad Request if quantity exceeds max order quantity
 
 #### 3.2.2 View Shopping Cart
 
@@ -536,12 +557,21 @@ sequenceDiagram
         
         alt Stock Available
             ProductService-->>CartService: true
-            CartService->>ShoppingCart: updateItemQuantity(itemId, quantity)
-            ShoppingCart->>ShoppingCart: calculateSubtotal()
-            ShoppingCart->>ShoppingCart: calculateTotal()
-            ShoppingCart-->>CartService: Updated Cart
-            CartService-->>CartController: void
-            CartController-->>Client: 200 OK
+            CartService->>ProductService: validateOrderQuantity(productId, quantity)
+            
+            alt Quantity Valid
+                ProductService-->>CartService: true
+                CartService->>ShoppingCart: updateItemQuantity(itemId, quantity)
+                ShoppingCart->>ShoppingCart: calculateSubtotal()
+                ShoppingCart->>ShoppingCart: calculateTotal()
+                ShoppingCart-->>CartService: Updated Cart
+                CartService-->>CartController: void
+                CartController-->>Client: 200 OK
+            else Exceeds Max Order Quantity
+                ProductService-->>CartService: false
+                CartService-->>CartController: throw MaxOrderQuantityExceededException
+                CartController-->>Client: 400 Bad Request
+            end
         else Insufficient Stock
             ProductService-->>CartService: false
             CartService-->>CartController: throw InsufficientStockException
@@ -562,10 +592,12 @@ sequenceDiagram
   - Cart item must exist
   - Quantity must be positive
   - Sufficient stock must be available
+  - Quantity must not exceed max order quantity limit
 - **Success Response**: 200 OK
 - **Error Responses**:
   - 404 Not Found if cart item doesn't exist
   - 400 Bad Request if insufficient stock
+  - 400 Bad Request if quantity exceeds max order quantity
 
 #### 3.2.4 Remove Item from Cart
 
@@ -639,6 +671,7 @@ CREATE TABLE products (
     description TEXT,
     price DECIMAL(10, 2) NOT NULL,
     stock_quantity INTEGER NOT NULL DEFAULT 0,
+    max_order_quantity INTEGER,
     category VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -658,6 +691,7 @@ CREATE TABLE cart_items (
     price DECIMAL(10, 2) NOT NULL,
     quantity INTEGER NOT NULL,
     subtotal DECIMAL(10, 2) NOT NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 ```
@@ -698,6 +732,13 @@ public class CartItemNotFoundException extends RuntimeException {
         super("Cart item not found with id: " + id);
     }
 }
+
+public class MaxOrderQuantityExceededException extends RuntimeException {
+    public MaxOrderQuantityExceededException(String productName, int requested, int maxAllowed) {
+        super(String.format("Order quantity exceeded for %s. Requested: %d, Maximum allowed: %d", 
+            productName, requested, maxAllowed));
+    }
+}
 ```
 
 ### 6.2 Global Exception Handler
@@ -718,6 +759,16 @@ public class GlobalExceptionHandler {
     
     @ExceptionHandler(InsufficientStockException.class)
     public ResponseEntity<ErrorResponse> handleInsufficientStock(InsufficientStockException ex) {
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+    
+    @ExceptionHandler(MaxOrderQuantityExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxOrderQuantityExceeded(MaxOrderQuantityExceededException ex) {
         ErrorResponse error = new ErrorResponse(
             HttpStatus.BAD_REQUEST.value(),
             ex.getMessage(),
@@ -783,18 +834,34 @@ public class GlobalExceptionHandler {
 - Description: Optional, max 2000 characters
 - Price: Required, positive, max 2 decimal places
 - Stock Quantity: Required, non-negative integer
+- Max Order Quantity: Optional, positive integer, must not exceed stock quantity
 - Category: Required, 1-100 characters
 
 **Cart Item:**
 - Product ID: Required, must exist
-- Quantity: Required, positive integer, max 999
+- Quantity: Required, positive integer, max 999, must not exceed max order quantity
+
+### 8.3 Session Management and Cart Persistence
+
+**Cart Session Handling:**
+- Shopping carts are session-scoped for authenticated users
+- Guest cart support enabled with session-based storage
+- Cart data persists across user sessions using secure session tokens
+- Session timeout: 30 minutes of inactivity
+- Cart data automatically saved to database on session expiration
+
+**Authentication Integration:**
+- Cart operations require valid session token
+- Guest users receive temporary session identifier
+- Authenticated users have carts linked to user accounts
+- Cart migration supported when guest users authenticate
 
 ---
 
 ## 9. Performance Considerations
 
 ### 9.1 Database Optimization
-- Indexes on frequently queried columns (category, name)
+- Indexes on frequently queried columns (category, name, product_id)
 - Connection pooling via HikariCP
 - Lazy loading for relationships
 - Query optimization via JPA criteria
@@ -817,17 +884,38 @@ public class GlobalExceptionHandler {
 - Service layer business logic
 - Repository custom queries
 - Utility methods
-- Target coverage: 80%+
+- Cart service validation logic
+- Order quantity limit enforcement
+- Target coverage: 85%+
 
 ### 10.2 Integration Tests
 - API endpoint testing
 - Database integration
 - End-to-end workflows
+- Cart checkout flow integration tests
+- Session management and cart persistence tests
 
 ### 10.3 Test Data
 - Use H2 in-memory database for tests
 - Test data builders for object creation
 - Mockito for mocking dependencies
+
+### 10.4 Cart-Specific Test Cases
+
+**Unit Tests:**
+- `testAddItemToCart_Success`
+- `testAddItemToCart_InsufficientStock`
+- `testAddItemToCart_ExceedsMaxOrderQuantity`
+- `testUpdateCartItemQuantity_Success`
+- `testRemoveItemFromCart_Success`
+- `testCalculateCartTotal_MultipleItems`
+- `testClearCart_Success`
+
+**Integration Tests:**
+- `testCartCheckoutFlow_EndToEnd`
+- `testGuestCartMigration_OnAuthentication`
+- `testCartPersistence_AcrossSessions`
+- `testConcurrentCartOperations`
 
 ---
 
@@ -850,6 +938,9 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
+  session:
+    timeout: 30m
+    store-type: redis
   
 server:
   port: 8080
@@ -858,11 +949,74 @@ logging:
   level:
     root: INFO
     com.ecommerce: DEBUG
+
+cart:
+  session:
+    persistence:
+      enabled: true
+    guest-support: true
 ```
 
 ---
 
-## 12. Future Enhancements
+## 12. Presentation Layer Components
+
+### 12.1 Shopping Cart UI Component
+
+**Component Features:**
+- **Item List Display**: Responsive grid/list view of cart items
+- **Quantity Selector**: Increment/decrement controls with manual input
+- **Remove Button**: Individual item removal with confirmation
+- **Total Display**: Real-time calculation of subtotals and grand total
+- **Checkout Button**: Primary action button for proceeding to checkout
+
+**Responsive Design:**
+- Mobile-first approach with breakpoints at 768px and 1024px
+- Touch-optimized controls for mobile devices
+- Collapsible cart summary on smaller screens
+- Sticky checkout button on mobile view
+
+**Component Structure:**
+```mermaid
+flowchart TD
+    A[Cart Component] --> B[Cart Header]
+    A --> C[Cart Items List]
+    A --> D[Cart Summary]
+    A --> E[Cart Actions]
+    
+    C --> F[Cart Item Component]
+    F --> G[Product Image]
+    F --> H[Product Details]
+    F --> I[Quantity Selector]
+    F --> J[Remove Button]
+    F --> K[Subtotal Display]
+    
+    D --> L[Items Count]
+    D --> M[Subtotal]
+    D --> N[Tax]
+    D --> O[Total Amount]
+    
+    E --> P[Continue Shopping]
+    E --> Q[Clear Cart]
+    E --> R[Checkout Button]
+```
+
+**User Interactions:**
+- Real-time quantity updates with debouncing (500ms)
+- Optimistic UI updates with rollback on error
+- Loading states for async operations
+- Toast notifications for cart actions
+- Empty cart state with call-to-action
+
+**Accessibility:**
+- ARIA labels for screen readers
+- Keyboard navigation support
+- Focus management for modal interactions
+- High contrast mode support
+
+---
+
+## 13. Future Enhancements
 
 1. **User Authentication & Authorization**
    - JWT-based authentication
@@ -889,9 +1043,9 @@ logging:
 
 ---
 
-## 13. Appendix
+## 14. Appendix
 
-### 13.1 Sample Request/Response
+### 14.1 Sample Request/Response
 
 **Create Product Request:**
 ```json
@@ -900,6 +1054,7 @@ logging:
   "description": "High-performance laptop",
   "price": 999.99,
   "stockQuantity": 50,
+  "maxOrderQuantity": 5,
   "category": "Electronics"
 }
 ```
@@ -912,6 +1067,7 @@ logging:
   "description": "High-performance laptop",
   "price": 999.99,
   "stockQuantity": 50,
+  "maxOrderQuantity": 5,
   "category": "Electronics",
   "createdAt": "2024-01-15T10:30:00",
   "updatedAt": "2024-01-15T10:30:00"
@@ -937,26 +1093,31 @@ logging:
       "productName": "Laptop",
       "price": 999.99,
       "quantity": 2,
-      "subtotal": 1999.98
+      "subtotal": 1999.98,
+      "addedAt": "2024-01-15T10:35:00"
     }
   ],
   "totalAmount": 1999.98
 }
 ```
 
-### 13.2 Key Features Summary
+### 14.2 Key Features Summary
 
 1. **Product Management**
    - Complete CRUD operations
    - Category-based filtering
    - Search functionality
    - Stock management
+   - Order quantity limits
 
 2. **Shopping Cart**
    - Add/remove items
    - Update quantities
    - Real-time total calculation
    - Stock validation
+   - Max order quantity enforcement
+   - Session-based persistence
+   - Guest cart support
 
 3. **Data Integrity**
    - Foreign key constraints
@@ -969,9 +1130,15 @@ logging:
    - Comprehensive validation
    - Clear documentation
 
+5. **User Interface**
+   - Responsive cart component
+   - Real-time updates
+   - Accessibility compliant
+   - Mobile-optimized
+
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 1.1  
 **Last Updated**: 2024-01-15  
 **Author**: Development Team  
 **Status**: Approved
