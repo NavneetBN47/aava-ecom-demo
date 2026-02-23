@@ -492,45 +492,10 @@ class CartItem {
     this.variantId = null;
     this.quantity = 0;
     this.price = 0;
+    this.currentPriceSnapshot = 0; // Price at time of addition to cart
     this.total = 0;
-    this.priceSnapshot = 0; // Current price snapshot at time of addition
   }
 }
-```
-
-#### 3.3.1.1 CartItem Current Price Snapshot Field
-
-**Purpose**: Ensure price consistency for cart items by capturing the product price at the time of addition to cart.
-
-**Requirement Reference**: story_summary.json: data_model_impact[CartItem]
-
-**Implementation Details**:
-
-The `priceSnapshot` field in the CartItem model stores the product price at the moment the item is added to the cart. This ensures:
-- Price consistency during the shopping session
-- Protection against price changes between cart addition and checkout
-- Accurate historical record of pricing for customer transparency
-
-**Business Rules**:
-1. When an item is added to cart, capture the current product price as `priceSnapshot`
-2. Use `priceSnapshot` for all cart total calculations
-3. If product price changes after item is in cart, notify customer before checkout
-4. Update `priceSnapshot` only when customer explicitly refreshes cart or re-adds item
-
-**Database Schema Update**:
-```sql
-ALTER TABLE cart_items ADD COLUMN price_snapshot DECIMAL(10, 2) NOT NULL DEFAULT 0;
-CREATE INDEX idx_cart_items_price_snapshot ON cart_items(price_snapshot);
-```
-
-**Usage in CartService**:
-```javascript
-// When adding item to cart
-itemData.priceSnapshot = product.price;
-itemData.price = product.price; // For backward compatibility
-
-// When calculating totals
-item.total = item.priceSnapshot * item.quantity;
 ```
 
 #### 3.3.2 Cart Repository
@@ -554,6 +519,7 @@ class CartRepository {
             'product_id', ci.product_id,
             'quantity', ci.quantity,
             'price', ci.price,
+            'current_price_snapshot', ci.current_price_snapshot,
             'product', p.*
           )
         ) as items
@@ -575,6 +541,7 @@ class CartRepository {
             'product_id', ci.product_id,
             'quantity', ci.quantity,
             'price', ci.price,
+            'current_price_snapshot', ci.current_price_snapshot,
             'product', p.*
           )
         ) as items
@@ -589,8 +556,8 @@ class CartRepository {
 
   async addItem(cartId, itemData) {
     const query = `
-      INSERT INTO cart_items (cart_id, product_id, variant_id, quantity, price)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO cart_items (cart_id, product_id, variant_id, quantity, price, current_price_snapshot)
+      VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (cart_id, product_id, variant_id) 
       DO UPDATE SET quantity = cart_items.quantity + $4
       RETURNING *
@@ -600,7 +567,8 @@ class CartRepository {
       itemData.productId,
       itemData.variantId,
       itemData.quantity,
-      itemData.price
+      itemData.price,
+      itemData.currentPriceSnapshot
     ];
     return await db.query(query, values);
   }
@@ -669,14 +637,14 @@ class CartService {
       throw new Error('Insufficient inventory');
     }
 
-    // Get current price and set price snapshot
+    // Get current price and store as snapshot
     itemData.price = product.price;
-    itemData.priceSnapshot = product.price;
+    itemData.currentPriceSnapshot = product.price;
 
     // Add item to cart
     await this.cartRepository.addItem(cart.id, itemData);
 
-    // Recalculate totals after adding item
+    // Recalculate totals after adding item (automatic recalculation)
     const updatedCart = await this.getCart(userId, sessionId);
     return await this.calculateTotals(updatedCart);
   }
@@ -697,7 +665,7 @@ class CartService {
     // Update item
     await this.cartRepository.updateItem(itemId, quantity);
 
-    // Recalculate totals after updating item
+    // Recalculate totals after updating item (automatic recalculation)
     const updatedCart = await this.getCart(userId, sessionId);
     return await this.calculateTotals(updatedCart);
   }
@@ -705,7 +673,7 @@ class CartService {
   async removeItem(userId, sessionId, itemId) {
     await this.cartRepository.removeItem(itemId);
     
-    // Recalculate totals after removing item
+    // Recalculate totals after removing item (automatic recalculation)
     const updatedCart = await this.getCart(userId, sessionId);
     return await this.calculateTotals(updatedCart);
   }
@@ -720,8 +688,9 @@ class CartService {
     let subtotal = 0;
 
     // Calculate subtotal and individual item totals
+    // This method is called automatically after any quantity mutation
     cart.items.forEach(item => {
-      item.total = item.price * item.quantity;
+      item.total = item.currentPriceSnapshot * item.quantity;
       subtotal += item.total;
     });
 
@@ -762,7 +731,8 @@ class CartService {
         productId: item.productId,
         variantId: item.variantId,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        currentPriceSnapshot: item.currentPriceSnapshot
       });
     }
 
@@ -774,62 +744,304 @@ class CartService {
 }
 ```
 
-#### 3.3.3.1 Automatic Recalculation Business Logic
+#### 3.3.4 Cart API Contracts
 
-**Purpose**: Ensure cart totals (subtotal, tax, shipping, discount, total) are automatically recalculated whenever cart item quantities are modified.
+**Purpose**: Explicit API contract documentation for cart endpoints as required by story_summary.json.
 
-**Requirement Reference**: story_summary.json: business_logic_rules[0]
+**Requirement Reference**: story_summary.json: api_contracts_required[POST /api/v1/cart/items, GET /api/v1/cart, PUT /api/v1/cart/items/{itemId}, DELETE /api/v1/cart/items/{itemId}]
 
-**Business Rule**:
-Upon any mutation to cart item quantity (add, update, remove), the system must automatically trigger recalculation of:
-- Item-level total (price × quantity)
-- Cart subtotal (sum of all item totals)
-- Tax (based on subtotal and applicable tax rates)
-- Shipping (based on cart contents and shipping method)
-- Discount (based on applied promotions)
-- Grand total (subtotal + tax + shipping - discount)
+##### POST /api/v1/cart/items - Add Item to Cart
 
-**Implementation**:
+**Endpoint**: `POST /api/v1/cart/items`
 
-The `calculateTotals` method is invoked automatically after every cart mutation operation:
+**Description**: Adds a new item to the shopping cart or updates quantity if item already exists.
 
-```javascript
-// After adding item
-const updatedCart = await this.getCart(userId, sessionId);
-return await this.calculateTotals(updatedCart);
-
-// After updating item quantity
-const updatedCart = await this.getCart(userId, sessionId);
-return await this.calculateTotals(updatedCart);
-
-// After removing item
-const updatedCart = await this.getCart(userId, sessionId);
-return await this.calculateTotals(updatedCart);
+**Request Headers**:
+```
+Content-Type: application/json
+Authorization: Bearer {token} (optional for guest users)
 ```
 
-**Calculation Flow**:
+**Request Body**:
+```json
+{
+  "productId": 123,
+  "variantId": 456,
+  "quantity": 2
+}
+```
+
+**Request Body Schema**:
+- `productId` (integer, required): ID of the product to add
+- `variantId` (integer, optional): ID of the product variant
+- `quantity` (integer, required): Quantity to add (must be > 0)
+
+**Response (200 OK)**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "items": [
+      {
+        "id": 1,
+        "productId": 123,
+        "variantId": 456,
+        "quantity": 2,
+        "price": 99.99,
+        "currentPriceSnapshot": 99.99,
+        "subtotal": 199.98,
+        "product": {
+          "id": 123,
+          "name": "Product Name",
+          "image": "https://example.com/image.jpg"
+        }
+      }
+    ],
+    "subtotal": 199.98,
+    "tax": 15.99,
+    "shipping": 10.00,
+    "discount": 0,
+    "total": 225.97
+  }
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Invalid request body or quantity
+- `404 Not Found`: Product not found
+- `409 Conflict`: Insufficient inventory
+- `500 Internal Server Error`: Server error
+
+##### GET /api/v1/cart - Retrieve Cart
+
+**Endpoint**: `GET /api/v1/cart`
+
+**Description**: Retrieves the current user's shopping cart with all items and calculated totals.
+
+**Request Headers**:
+```
+Authorization: Bearer {token} (optional for guest users)
+```
+
+**Query Parameters**: None
+
+**Response (200 OK) - Cart with Items**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "items": [
+      {
+        "id": 1,
+        "productId": 123,
+        "variantId": 456,
+        "quantity": 2,
+        "price": 99.99,
+        "currentPriceSnapshot": 99.99,
+        "subtotal": 199.98,
+        "product": {
+          "id": 123,
+          "name": "Product Name",
+          "image": "https://example.com/image.jpg",
+          "currentPrice": 99.99
+        }
+      }
+    ],
+    "subtotal": 199.98,
+    "tax": 15.99,
+    "shipping": 10.00,
+    "discount": 0,
+    "total": 225.97,
+    "isEmpty": false
+  }
+}
+```
+
+**Response (200 OK) - Empty Cart**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "items": [],
+    "subtotal": 0,
+    "tax": 0,
+    "shipping": 0,
+    "discount": 0,
+    "total": 0,
+    "isEmpty": true,
+    "uiState": {
+      "showEmptyCartMessage": true,
+      "continueShoppingUrl": "/products",
+      "emptyCartMessage": "Your cart is empty. Continue shopping to add items."
+    }
+  },
+  "redirect": {
+    "required": true,
+    "url": "/products",
+    "message": "Your cart is empty. Redirecting to products..."
+  }
+}
+```
+
+**Error Responses**:
+- `500 Internal Server Error`: Server error
+
+##### PUT /api/v1/cart/items/{itemId} - Update Cart Item Quantity
+
+**Endpoint**: `PUT /api/v1/cart/items/{itemId}`
+
+**Description**: Updates the quantity of an existing cart item. Automatically recalculates cart totals.
+
+**Request Headers**:
+```
+Content-Type: application/json
+Authorization: Bearer {token} (optional for guest users)
+```
+
+**Path Parameters**:
+- `itemId` (integer, required): ID of the cart item to update
+
+**Request Body**:
+```json
+{
+  "quantity": 3
+}
+```
+
+**Request Body Schema**:
+- `quantity` (integer, required): New quantity (must be >= 0, 0 removes item)
+
+**Response (200 OK)**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "items": [
+      {
+        "id": 1,
+        "productId": 123,
+        "variantId": 456,
+        "quantity": 3,
+        "price": 99.99,
+        "currentPriceSnapshot": 99.99,
+        "subtotal": 299.97,
+        "product": {
+          "id": 123,
+          "name": "Product Name",
+          "image": "https://example.com/image.jpg"
+        }
+      }
+    ],
+    "subtotal": 299.97,
+    "tax": 23.99,
+    "shipping": 10.00,
+    "discount": 0,
+    "total": 333.96
+  }
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Invalid quantity
+- `404 Not Found`: Cart item not found
+- `409 Conflict`: Insufficient inventory
+- `500 Internal Server Error`: Server error
+
+##### DELETE /api/v1/cart/items/{itemId} - Remove Cart Item
+
+**Endpoint**: `DELETE /api/v1/cart/items/{itemId}`
+
+**Description**: Removes an item from the shopping cart. Automatically recalculates cart totals.
+
+**Request Headers**:
+```
+Authorization: Bearer {token} (optional for guest users)
+```
+
+**Path Parameters**:
+- `itemId` (integer, required): ID of the cart item to remove
+
+**Response (200 OK)**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "items": [],
+    "subtotal": 0,
+    "tax": 0,
+    "shipping": 0,
+    "discount": 0,
+    "total": 0,
+    "isEmpty": true,
+    "uiState": {
+      "showEmptyCartMessage": true,
+      "continueShoppingUrl": "/products",
+      "emptyCartMessage": "Your cart is empty. Continue shopping to add items."
+    }
+  }
+}
+```
+
+**Error Responses**:
+- `404 Not Found`: Cart item not found
+- `500 Internal Server Error`: Server error
+
+**API Contract Diagram**:
 
 ```mermaid
-flowchart TD
-    A[Cart Mutation Event] --> B[Fetch Updated Cart]
-    B --> C[Calculate Item Totals]
-    C --> D[Calculate Subtotal]
-    D --> E[Calculate Tax]
-    E --> F[Calculate Shipping]
-    F --> G[Apply Discounts]
-    G --> H[Calculate Grand Total]
-    H --> I[Return Updated Cart]
-    
-    style A fill:#ffcccc
-    style I fill:#ccffcc
+sequenceDiagram
+    participant Client
+    participant API
+    participant CartService
+    participant CartRepository
+    participant ProductRepository
+    participant PricingService
+
+    Client->>API: POST /api/v1/cart/items
+    API->>CartService: addItem(userId, sessionId, itemData)
+    CartService->>ProductRepository: findById(productId)
+    ProductRepository-->>CartService: product
+    CartService->>CartRepository: addItem(cartId, itemData)
+    CartRepository-->>CartService: item added
+    CartService->>PricingService: calculateTotals(cart)
+    PricingService-->>CartService: updated cart
+    CartService-->>API: cart with totals
+    API-->>Client: 200 OK with cart data
+
+    Client->>API: GET /api/v1/cart
+    API->>CartService: getCart(userId, sessionId)
+    CartService->>CartRepository: findByUserId(userId)
+    CartRepository-->>CartService: cart
+    CartService->>PricingService: calculateTotals(cart)
+    PricingService-->>CartService: updated cart
+    CartService-->>API: cart with totals
+    API-->>Client: 200 OK with cart data
+
+    Client->>API: PUT /api/v1/cart/items/{itemId}
+    API->>CartService: updateItem(userId, sessionId, itemId, quantity)
+    CartService->>CartRepository: updateItem(itemId, quantity)
+    CartRepository-->>CartService: item updated
+    CartService->>PricingService: calculateTotals(cart)
+    PricingService-->>CartService: updated cart
+    CartService-->>API: cart with totals
+    API-->>Client: 200 OK with cart data
+
+    Client->>API: DELETE /api/v1/cart/items/{itemId}
+    API->>CartService: removeItem(userId, sessionId, itemId)
+    CartService->>CartRepository: removeItem(itemId)
+    CartRepository-->>CartService: item removed
+    CartService->>PricingService: calculateTotals(cart)
+    PricingService-->>CartService: updated cart
+    CartService-->>API: cart with totals
+    API-->>Client: 200 OK with cart data
 ```
 
-**Error Handling**:
-- If calculation fails, return cart with previous totals and log error
-- Ensure atomic operations to prevent partial updates
-- Validate all calculated values are non-negative
-
-#### 3.3.4 Cart UI Redirection Logic for Empty Cart State
+#### 3.3.5 Cart UI Redirection Logic for Empty Cart State
 
 **Purpose**: Implement UI redirection logic to handle empty cart state and guide users to continue shopping.
 
@@ -914,10 +1126,12 @@ class CartViewController {
     if (cart.isEmpty) {
       // Display empty cart UI with continue shopping link
       const emptyCartHTML = `
-        <div class="empty-cart">
+        <div class="empty-cart" role="alert" aria-live="polite">
           <h2>Your Cart is Empty</h2>
           <p>${cart.uiState.emptyCartMessage}</p>
-          <a href="${cart.uiState.continueShoppingUrl}" class="btn btn-primary">
+          <a href="${cart.uiState.continueShoppingUrl}" 
+             class="btn btn-primary" 
+             aria-label="Continue shopping and browse products">
             Continue Shopping
           </a>
         </div>
@@ -977,24 +1191,17 @@ flowchart TD
     style G fill:#ccffee
 ```
 
-#### 3.3.5 Frontend Quantity Updater Component
+#### 3.3.6 Frontend Quantity Updater Component
 
-**Purpose**: Provide a reusable UI component for updating cart item quantities with real-time feedback and validation.
+**Purpose**: Implement frontend component for updating cart item quantities with real-time feedback.
 
 **Requirement Reference**: story_summary.json: presentation_layer_needs[Quantity Updater Component]
 
 **Component Specification**:
 
-The Quantity Updater Component is a frontend UI element that allows users to modify cart item quantities with the following features:
-- Increment/decrement buttons
-- Direct numeric input
-- Real-time validation
-- Inventory availability checking
-- Automatic cart total recalculation
-- Loading states during API calls
-- Error handling and user feedback
+The Quantity Updater Component provides an intuitive interface for users to modify item quantities in their cart with immediate visual feedback and automatic total recalculation.
 
-**Component Implementation**:
+**Component Structure**:
 
 ```javascript
 class QuantityUpdaterComponent {
@@ -1002,150 +1209,126 @@ class QuantityUpdaterComponent {
     this.cartItemId = cartItemId;
     this.currentQuantity = currentQuantity;
     this.maxQuantity = maxQuantity;
-    this.isLoading = false;
+    this.isUpdating = false;
   }
 
   render() {
     return `
       <div class="quantity-updater" data-item-id="${this.cartItemId}">
         <button 
-          class="quantity-btn decrement" 
-          onclick="quantityUpdater.decrement('${this.cartItemId}')"
-          ${this.currentQuantity <= 1 ? 'disabled' : ''}
+          class="quantity-btn quantity-decrease" 
+          onclick="updateQuantity(${this.cartItemId}, ${this.currentQuantity - 1})"
           aria-label="Decrease quantity"
-        >
+          ${this.currentQuantity <= 1 ? 'disabled' : ''}>
           -
         </button>
-        
         <input 
           type="number" 
           class="quantity-input" 
           value="${this.currentQuantity}" 
           min="1" 
           max="${this.maxQuantity}"
-          onchange="quantityUpdater.updateQuantity('${this.cartItemId}', this.value)"
-          aria-label="Item quantity"
-        />
-        
+          onchange="updateQuantity(${this.cartItemId}, this.value)"
+          aria-label="Item quantity">
         <button 
-          class="quantity-btn increment" 
-          onclick="quantityUpdater.increment('${this.cartItemId}')"
-          ${this.currentQuantity >= this.maxQuantity ? 'disabled' : ''}
+          class="quantity-btn quantity-increase" 
+          onclick="updateQuantity(${this.cartItemId}, ${this.currentQuantity + 1})"
           aria-label="Increase quantity"
-        >
+          ${this.currentQuantity >= this.maxQuantity ? 'disabled' : ''}>
           +
         </button>
-        
-        <span class="quantity-error" style="display:none;"></span>
-        <span class="quantity-loading" style="display:none;">Updating...</span>
+        <span class="quantity-status" role="status" aria-live="polite"></span>
       </div>
     `;
   }
 
-  async increment(itemId) {
-    const input = document.querySelector(`[data-item-id="${itemId}"] .quantity-input`);
-    const newQuantity = parseInt(input.value) + 1;
+  async updateQuantity(newQuantity) {
+    if (this.isUpdating) return;
     
-    if (newQuantity <= this.maxQuantity) {
-      await this.updateQuantity(itemId, newQuantity);
-    } else {
-      this.showError(itemId, 'Maximum quantity reached');
+    // Validate quantity
+    if (newQuantity < 1 || newQuantity > this.maxQuantity) {
+      this.showError(`Quantity must be between 1 and ${this.maxQuantity}`);
+      return;
     }
-  }
 
-  async decrement(itemId) {
-    const input = document.querySelector(`[data-item-id="${itemId}"] .quantity-input`);
-    const newQuantity = parseInt(input.value) - 1;
-    
-    if (newQuantity >= 1) {
-      await this.updateQuantity(itemId, newQuantity);
-    } else {
-      this.showError(itemId, 'Minimum quantity is 1');
-    }
-  }
-
-  async updateQuantity(itemId, quantity) {
-    if (this.isLoading) return;
-    
-    this.isLoading = true;
-    this.showLoading(itemId, true);
-    this.hideError(itemId);
+    this.isUpdating = true;
+    this.showLoading();
 
     try {
-      const response = await fetch(`/api/v1/cart/items/${itemId}`, {
+      const response = await fetch(`/api/v1/cart/items/${this.cartItemId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.getAuthToken()}`
         },
-        body: JSON.stringify({ quantity: parseInt(quantity) })
+        body: JSON.stringify({ quantity: newQuantity })
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        // Update UI with new cart totals
-        this.updateCartTotals(data.data);
-        this.currentQuantity = quantity;
-        
-        // Update input value
-        const input = document.querySelector(`[data-item-id="${itemId}"] .quantity-input`);
-        input.value = quantity;
-        
-        // Update button states
-        this.updateButtonStates(itemId, quantity);
-      } else {
-        this.showError(itemId, data.error || 'Failed to update quantity');
-        // Revert input to previous value
-        const input = document.querySelector(`[data-item-id="${itemId}"] .quantity-input`);
-        input.value = this.currentQuantity;
+      if (!response.ok) {
+        throw new Error('Failed to update quantity');
       }
+
+      const data = await response.json();
+      
+      // Update UI with new cart data
+      this.currentQuantity = newQuantity;
+      this.updateCartTotals(data.data);
+      this.showSuccess('Quantity updated');
+      
     } catch (error) {
-      this.showError(itemId, 'Network error. Please try again.');
-      // Revert input to previous value
-      const input = document.querySelector(`[data-item-id="${itemId}"] .quantity-input`);
-      input.value = this.currentQuantity;
+      this.showError('Failed to update quantity. Please try again.');
+      console.error('Quantity update error:', error);
     } finally {
-      this.isLoading = false;
-      this.showLoading(itemId, false);
+      this.isUpdating = false;
+      this.hideLoading();
     }
   }
 
-  updateButtonStates(itemId, quantity) {
-    const container = document.querySelector(`[data-item-id="${itemId}"]`);
-    const decrementBtn = container.querySelector('.decrement');
-    const incrementBtn = container.querySelector('.increment');
-    
-    decrementBtn.disabled = quantity <= 1;
-    incrementBtn.disabled = quantity >= this.maxQuantity;
+  showLoading() {
+    const statusElement = document.querySelector(`[data-item-id="${this.cartItemId}"] .quantity-status`);
+    statusElement.textContent = 'Updating...';
+    statusElement.className = 'quantity-status loading';
   }
 
-  showError(itemId, message) {
-    const errorSpan = document.querySelector(`[data-item-id="${itemId}"] .quantity-error`);
-    errorSpan.textContent = message;
-    errorSpan.style.display = 'block';
-    
+  hideLoading() {
+    const statusElement = document.querySelector(`[data-item-id="${this.cartItemId}"] .quantity-status`);
     setTimeout(() => {
-      this.hideError(itemId);
-    }, 3000);
+      statusElement.textContent = '';
+      statusElement.className = 'quantity-status';
+    }, 2000);
   }
 
-  hideError(itemId) {
-    const errorSpan = document.querySelector(`[data-item-id="${itemId}"] .quantity-error`);
-    errorSpan.style.display = 'none';
+  showSuccess(message) {
+    const statusElement = document.querySelector(`[data-item-id="${this.cartItemId}"] .quantity-status`);
+    statusElement.textContent = message;
+    statusElement.className = 'quantity-status success';
   }
 
-  showLoading(itemId, show) {
-    const loadingSpan = document.querySelector(`[data-item-id="${itemId}"] .quantity-loading`);
-    loadingSpan.style.display = show ? 'inline' : 'none';
+  showError(message) {
+    const statusElement = document.querySelector(`[data-item-id="${this.cartItemId}"] .quantity-status`);
+    statusElement.textContent = message;
+    statusElement.className = 'quantity-status error';
   }
 
   updateCartTotals(cartData) {
-    // Update cart summary in UI
+    // Update subtotal
     document.getElementById('cart-subtotal').textContent = `$${cartData.subtotal.toFixed(2)}`;
+    
+    // Update tax
     document.getElementById('cart-tax').textContent = `$${cartData.tax.toFixed(2)}`;
+    
+    // Update shipping
     document.getElementById('cart-shipping').textContent = `$${cartData.shipping.toFixed(2)}`;
+    
+    // Update total
     document.getElementById('cart-total').textContent = `$${cartData.total.toFixed(2)}`;
+    
+    // Update item subtotal
+    const item = cartData.items.find(i => i.id === this.cartItemId);
+    if (item) {
+      document.querySelector(`[data-item-id="${this.cartItemId}"] .item-subtotal`).textContent = 
+        `$${item.subtotal.toFixed(2)}`;
+    }
   }
 
   getAuthToken() {
@@ -1153,35 +1336,38 @@ class QuantityUpdaterComponent {
   }
 }
 
-// Global instance for event handlers
-const quantityUpdater = new QuantityUpdaterComponent();
+// Global function for inline event handlers
+function updateQuantity(itemId, newQuantity) {
+  const component = window.quantityUpdaters[itemId];
+  if (component) {
+    component.updateQuantity(newQuantity);
+  }
+}
 ```
 
-**CSS Styling**:
+**Component Styling (CSS)**:
 
 ```css
 .quantity-updater {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 8px 0;
 }
 
 .quantity-btn {
   width: 32px;
   height: 32px;
   border: 1px solid #ddd;
-  background: #f5f5f5;
-  border-radius: 4px;
+  background: #fff;
   cursor: pointer;
   font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
 
 .quantity-btn:hover:not(:disabled) {
-  background: #e0e0e0;
+  background: #f5f5f5;
+  border-color: #999;
 }
 
 .quantity-btn:disabled {
@@ -1198,447 +1384,81 @@ const quantityUpdater = new QuantityUpdaterComponent();
   font-size: 14px;
 }
 
-.quantity-error {
-  color: #d32f2f;
+.quantity-status {
   font-size: 12px;
+  margin-left: 8px;
 }
 
-.quantity-loading {
-  color: #1976d2;
-  font-size: 12px;
+.quantity-status.loading {
+  color: #666;
+}
+
+.quantity-status.success {
+  color: #28a745;
+}
+
+.quantity-status.error {
+  color: #dc3545;
 }
 ```
 
-**Integration with Cart API**:
+**Component Integration Example**:
 
-The component integrates with the following cart API endpoints:
-- `PUT /api/v1/cart/items/{itemId}` - Update item quantity
-- `GET /api/v1/cart` - Fetch updated cart totals
+```javascript
+// Initialize quantity updaters for all cart items
+function initializeQuantityUpdaters() {
+  window.quantityUpdaters = {};
+  
+  document.querySelectorAll('.cart-item').forEach(itemElement => {
+    const itemId = itemElement.dataset.itemId;
+    const currentQuantity = parseInt(itemElement.dataset.quantity);
+    const maxQuantity = parseInt(itemElement.dataset.maxQuantity);
+    
+    const updater = new QuantityUpdaterComponent(itemId, currentQuantity, maxQuantity);
+    window.quantityUpdaters[itemId] = updater;
+    
+    // Render component
+    const container = itemElement.querySelector('.quantity-container');
+    container.innerHTML = updater.render();
+  });
+}
 
-**Accessibility Features**:
-- ARIA labels for screen readers
-- Keyboard navigation support
-- Focus management
-- Error announcements
+// Call on page load
+document.addEventListener('DOMContentLoaded', initializeQuantityUpdaters);
+```
 
-**Mermaid Diagram - Quantity Update Flow**:
+**Quantity Updater Component Flow Diagram**:
 
 ```mermaid
-sequenceDiagram
-    participant User
-    participant Component
-    participant API
-    participant Cart
+flowchart TD
+    A[User Interacts with Quantity Control] --> B{Action Type}
+    B -->|Click +| C[Increment Quantity]
+    B -->|Click -| D[Decrement Quantity]
+    B -->|Manual Input| E[Validate Input]
     
-    User->>Component: Click Increment/Decrement
-    Component->>Component: Validate New Quantity
-    Component->>Component: Show Loading State
-    Component->>API: PUT /api/v1/cart/items/{id}
-    API->>Cart: Update Item Quantity
-    Cart->>Cart: Recalculate Totals
-    Cart->>API: Return Updated Cart
-    API->>Component: Response with Cart Data
-    Component->>Component: Update UI
-    Component->>Component: Hide Loading State
-    Component->>User: Display Updated Quantity & Totals
-```
-
-#### 3.3.6 Shopping Cart API Contract Documentation
-
-**Purpose**: Provide explicit API contract specifications for all shopping cart endpoints to ensure implementation traceability and consistency.
-
-**Requirement Reference**: story_summary.json: api_contracts_required[POST /api/v1/cart/items, GET /api/v1/cart, PUT /api/v1/cart/items/{itemId}, DELETE /api/v1/cart/items/{itemId}]
-
-**API Base URL**: `/api/v1/cart`
-
-**Authentication**: All endpoints require Bearer token authentication
-
-**Common Response Format**:
-```json
-{
-  "success": true|false,
-  "data": {},
-  "error": "error message if success is false"
-}
-```
-
----
-
-**Endpoint 1: Add Item to Cart**
-
-**HTTP Method**: `POST`
-
-**Endpoint**: `/api/v1/cart/items`
-
-**Description**: Adds a new item to the shopping cart or increments quantity if item already exists.
-
-**Request Headers**:
-```
-Content-Type: application/json
-Authorization: Bearer {token}
-```
-
-**Request Body**:
-```json
-{
-  "productId": 123,
-  "variantId": 456,
-  "quantity": 2
-}
-```
-
-**Request Body Schema**:
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| productId | integer | Yes | Unique product identifier |
-| variantId | integer | No | Product variant identifier (null for base product) |
-| quantity | integer | Yes | Number of items to add (min: 1) |
-
-**Success Response (200 OK)**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "userId": 100,
-    "items": [
-      {
-        "id": 1,
-        "productId": 123,
-        "variantId": 456,
-        "quantity": 2,
-        "price": 99.99,
-        "priceSnapshot": 99.99,
-        "subtotal": 199.98,
-        "product": {
-          "id": 123,
-          "name": "Product Name",
-          "image": "https://example.com/image.jpg"
-        }
-      }
-    ],
-    "subtotal": 199.98,
-    "tax": 15.99,
-    "shipping": 10.00,
-    "discount": 0,
-    "total": 225.97,
-    "isEmpty": false
-  }
-}
-```
-
-**Error Responses**:
-
-400 Bad Request:
-```json
-{
-  "success": false,
-  "error": "Invalid quantity. Must be at least 1."
-}
-```
-
-404 Not Found:
-```json
-{
-  "success": false,
-  "error": "Product not found"
-}
-```
-
-409 Conflict:
-```json
-{
-  "success": false,
-  "error": "Insufficient inventory. Only 5 items available."
-}
-```
-
----
-
-**Endpoint 2: Get Cart**
-
-**HTTP Method**: `GET`
-
-**Endpoint**: `/api/v1/cart`
-
-**Description**: Retrieves the current user's shopping cart with all items and calculated totals.
-
-**Request Headers**:
-```
-Authorization: Bearer {token}
-```
-
-**Query Parameters**: None
-
-**Success Response (200 OK) - Cart with Items**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "userId": 100,
-    "items": [
-      {
-        "id": 1,
-        "productId": 123,
-        "variantId": 456,
-        "quantity": 2,
-        "price": 99.99,
-        "priceSnapshot": 99.99,
-        "subtotal": 199.98,
-        "product": {
-          "id": 123,
-          "name": "Product Name",
-          "sku": "SKU-123",
-          "image": "https://example.com/image.jpg",
-          "currentPrice": 99.99,
-          "availableQuantity": 50
-        }
-      }
-    ],
-    "subtotal": 199.98,
-    "tax": 15.99,
-    "shipping": 10.00,
-    "discount": 0,
-    "total": 225.97,
-    "isEmpty": false,
-    "itemCount": 2,
-    "createdAt": "2024-01-15T10:30:00Z",
-    "updatedAt": "2024-01-15T11:45:00Z"
-  }
-}
-```
-
-**Success Response (200 OK) - Empty Cart**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "userId": 100,
-    "items": [],
-    "subtotal": 0,
-    "tax": 0,
-    "shipping": 0,
-    "discount": 0,
-    "total": 0,
-    "isEmpty": true,
-    "itemCount": 0,
-    "uiState": {
-      "showEmptyCartMessage": true,
-      "continueShoppingUrl": "/products",
-      "emptyCartMessage": "Your cart is empty. Continue shopping to add items."
-    }
-  },
-  "redirect": {
-    "required": true,
-    "url": "/products",
-    "message": "Your cart is empty. Redirecting to products..."
-  }
-}
-```
-
-**Error Responses**:
-
-401 Unauthorized:
-```json
-{
-  "success": false,
-  "error": "Authentication required"
-}
-```
-
----
-
-**Endpoint 3: Update Cart Item Quantity**
-
-**HTTP Method**: `PUT`
-
-**Endpoint**: `/api/v1/cart/items/{itemId}`
-
-**Description**: Updates the quantity of a specific cart item. If quantity is 0, the item is removed.
-
-**Request Headers**:
-```
-Content-Type: application/json
-Authorization: Bearer {token}
-```
-
-**Path Parameters**:
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| itemId | integer | Unique cart item identifier |
-
-**Request Body**:
-```json
-{
-  "quantity": 3
-}
-```
-
-**Request Body Schema**:
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| quantity | integer | Yes | New quantity (0 to remove, min: 0, max: product availability) |
-
-**Success Response (200 OK)**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "userId": 100,
-    "items": [
-      {
-        "id": 1,
-        "productId": 123,
-        "variantId": 456,
-        "quantity": 3,
-        "price": 99.99,
-        "priceSnapshot": 99.99,
-        "subtotal": 299.97,
-        "product": {
-          "id": 123,
-          "name": "Product Name",
-          "image": "https://example.com/image.jpg"
-        }
-      }
-    ],
-    "subtotal": 299.97,
-    "tax": 23.99,
-    "shipping": 10.00,
-    "discount": 0,
-    "total": 333.96,
-    "isEmpty": false
-  }
-}
-```
-
-**Error Responses**:
-
-400 Bad Request:
-```json
-{
-  "success": false,
-  "error": "Invalid quantity"
-}
-```
-
-404 Not Found:
-```json
-{
-  "success": false,
-  "error": "Cart item not found"
-}
-```
-
-409 Conflict:
-```json
-{
-  "success": false,
-  "error": "Insufficient inventory. Only 5 items available."
-}
-```
-
----
-
-**Endpoint 4: Remove Cart Item**
-
-**HTTP Method**: `DELETE`
-
-**Endpoint**: `/api/v1/cart/items/{itemId}`
-
-**Description**: Removes a specific item from the shopping cart.
-
-**Request Headers**:
-```
-Authorization: Bearer {token}
-```
-
-**Path Parameters**:
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| itemId | integer | Unique cart item identifier |
-
-**Success Response (200 OK)**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "userId": 100,
-    "items": [],
-    "subtotal": 0,
-    "tax": 0,
-    "shipping": 0,
-    "discount": 0,
-    "total": 0,
-    "isEmpty": true,
-    "uiState": {
-      "showEmptyCartMessage": true,
-      "continueShoppingUrl": "/products",
-      "emptyCartMessage": "Your cart is empty. Continue shopping to add items."
-    }
-  },
-  "message": "Item removed from cart successfully"
-}
-```
-
-**Error Responses**:
-
-404 Not Found:
-```json
-{
-  "success": false,
-  "error": "Cart item not found"
-}
-```
-
-403 Forbidden:
-```json
-{
-  "success": false,
-  "error": "You do not have permission to modify this cart"
-}
-```
-
----
-
-**API Contract Validation Rules**:
-
-1. **Authentication**: All endpoints require valid JWT token in Authorization header
-2. **Rate Limiting**: 100 requests per minute per user
-3. **Request Validation**: All request bodies must pass JSON schema validation
-4. **Response Format**: All responses follow standard success/error format
-5. **HTTP Status Codes**:
-   - 200: Success
-   - 400: Bad Request (validation error)
-   - 401: Unauthorized (missing/invalid token)
-   - 403: Forbidden (insufficient permissions)
-   - 404: Not Found (resource not found)
-   - 409: Conflict (business rule violation)
-   - 500: Internal Server Error
-
-**Mermaid Diagram - Cart API Flow**:
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API
-    participant CartService
-    participant Database
+    C --> F{Validate Max Quantity}
+    D --> G{Validate Min Quantity}
+    E --> H{Validate Range}
     
-    Client->>API: POST /api/v1/cart/items
-    API->>API: Validate Token
-    API->>API: Validate Request Body
-    API->>CartService: addItem(userId, itemData)
-    CartService->>Database: Check Product Availability
-    Database-->>CartService: Product Data
-    CartService->>Database: Insert/Update Cart Item
-    CartService->>CartService: Calculate Totals
-    Database-->>CartService: Updated Cart
-    CartService-->>API: Cart with Totals
-    API-->>Client: 200 OK with Cart Data
+    F -->|Valid| I[Call API PUT /cart/items/:id]
+    F -->|Invalid| J[Show Error: Max Reached]
+    G -->|Valid| I
+    G -->|Invalid| K[Show Error: Min Reached]
+    H -->|Valid| I
+    H -->|Invalid| L[Show Error: Invalid Range]
+    
+    I --> M[Show Loading State]
+    M --> N{API Response}
+    N -->|Success| O[Update UI with New Totals]
+    N -->|Error| P[Show Error Message]
+    
+    O --> Q[Show Success Message]
+    Q --> R[Hide Loading State]
+    P --> R
+    
+    style I fill:#cce5ff
+    style O fill:#ccffcc
+    style P fill:#ffcccc
 ```
 
 ### 3.4 Order Management Module
@@ -1889,16 +1709,18 @@ class OrderService {
     // Create order
     const createdOrder = await this.orderRepository.create(order);
 
-    // Clear cart
-    await this.cartService.clearCart(userId, null);
-
     // Process payment
     try {
       await this.paymentService.processPayment(createdOrder);
       await this.orderRepository.updatePaymentStatus(createdOrder.id, 'paid');
       await this.orderRepository.updateStatus(createdOrder.id, 'confirmed');
+      
+      // Clear cart only after successful payment
+      await this.cartService.clearCart(userId, null);
     } catch (error) {
       await this.orderRepository.updatePaymentStatus(createdOrder.id, 'failed');
+      // Rollback: Restore cart state if payment fails
+      await this.restoreCartFromOrder(userId, createdOrder);
       throw new Error('Payment failed: ' + error.message);
     }
 
@@ -1906,6 +1728,17 @@ class OrderService {
     await this.notificationService.sendOrderConfirmation(createdOrder);
 
     return createdOrder;
+  }
+
+  async restoreCartFromOrder(userId, order) {
+    // Restore cart items if payment fails
+    for (const item of order.items) {
+      await this.cartService.addItem(userId, null, {
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity
+      });
+    }
   }
 
   async getOrder(orderId, userId) {
@@ -1973,341 +1806,378 @@ class OrderService {
 
 #### 3.4.4 Order Placement Workflow from Cart to Order
 
-**Purpose**: Document the complete workflow for transitioning from shopping cart to confirmed order, including validation, state transitions, and error handling.
+**Purpose**: Document the complete order placement workflow including cart validation, state transition, and error handling.
 
 **Requirement Reference**: epic_summary.json: child_stories_roadmap[Order Placement and Processing]
 
-**Workflow Overview**:
+**Workflow Description**:
 
-The order placement workflow encompasses the following stages:
-1. Cart validation and state verification
-2. Order creation and data preparation
-3. Payment processing
-4. Inventory deduction
-5. Cart clearance
-6. Order confirmation and notification
+The order placement workflow manages the transition from shopping cart to confirmed order, ensuring data integrity, payment processing, and proper state management throughout the process.
 
-**Detailed Workflow Steps**:
+**Workflow Steps**:
 
-**Step 1: Cart State Validation**
+1. **Cart Validation**
+   - Verify cart is not empty
+   - Validate all items are still available
+   - Confirm inventory availability for all items
+   - Validate cart totals are current
 
-Before order placement, the system validates:
-- Cart is not empty
-- All cart items are still available
-- Product prices have not changed significantly
-- Inventory is sufficient for all items
-- User has valid shipping and billing addresses
+2. **Order Preparation**
+   - Generate unique order number
+   - Capture cart snapshot (items, prices, totals)
+   - Validate shipping and billing addresses
+   - Prepare order data structure
+
+3. **Order Creation**
+   - Create order record in database
+   - Create order items from cart items
+   - Reserve inventory for order items
+   - Maintain transactional integrity
+
+4. **Payment Processing**
+   - Process payment through payment gateway
+   - Handle payment success/failure
+   - Update order payment status
+   - Rollback on payment failure
+
+5. **Order Confirmation**
+   - Update order status to confirmed
+   - Clear shopping cart
+   - Send confirmation email
+   - Trigger fulfillment workflow
+
+6. **Error Handling**
+   - Restore cart on payment failure
+   - Release reserved inventory on failure
+   - Log errors for monitoring
+   - Provide user-friendly error messages
+
+**Implementation Code**:
 
 ```javascript
-async validateCartForCheckout(userId) {
-  const cart = await this.cartService.getCart(userId, null);
-  
-  // Check cart is not empty
-  if (!cart.items || cart.items.length === 0) {
-    throw new ValidationError('Cannot checkout with empty cart');
+class OrderPlacementWorkflow {
+  constructor() {
+    this.cartService = new CartService();
+    this.orderService = new OrderService();
+    this.inventoryService = new InventoryService();
+    this.paymentService = new PaymentService();
+    this.notificationService = new NotificationService();
+    this.logger = new Logger();
   }
-  
-  // Validate each item
-  for (const item of cart.items) {
-    const product = await this.productRepository.findById(item.productId);
-    
-    // Check product still exists and is active
-    if (!product || !product.isActive) {
-      throw new ValidationError(`Product ${item.productId} is no longer available`);
-    }
-    
-    // Check inventory
-    if (product.quantity < item.quantity) {
-      throw new ValidationError(`Insufficient inventory for ${product.name}. Only ${product.quantity} available.`);
-    }
-    
-    // Check for significant price changes
-    const priceChange = Math.abs(product.price - item.priceSnapshot);
-    const priceChangePercent = (priceChange / item.priceSnapshot) * 100;
-    
-    if (priceChangePercent > 10) {
-      throw new ValidationError(`Price for ${product.name} has changed significantly. Please review your cart.`);
+
+  async placeOrder(userId, orderData) {
+    const workflowId = this.generateWorkflowId();
+    this.logger.info('Order placement workflow started', { workflowId, userId });
+
+    try {
+      // Step 1: Validate Cart
+      const cart = await this.validateCart(userId);
+      this.logger.info('Cart validated', { workflowId, cartId: cart.id });
+
+      // Step 2: Prepare Order
+      const preparedOrder = await this.prepareOrder(userId, cart, orderData);
+      this.logger.info('Order prepared', { workflowId, orderNumber: preparedOrder.orderNumber });
+
+      // Step 3: Create Order (with inventory reservation)
+      const createdOrder = await this.createOrderWithReservation(preparedOrder);
+      this.logger.info('Order created', { workflowId, orderId: createdOrder.id });
+
+      // Step 4: Process Payment
+      const paymentResult = await this.processPayment(createdOrder);
+      this.logger.info('Payment processed', { workflowId, paymentStatus: paymentResult.status });
+
+      // Step 5: Confirm Order
+      const confirmedOrder = await this.confirmOrder(createdOrder, paymentResult);
+      this.logger.info('Order confirmed', { workflowId, orderId: confirmedOrder.id });
+
+      // Step 6: Clear Cart
+      await this.cartService.clearCart(userId, null);
+      this.logger.info('Cart cleared', { workflowId });
+
+      // Step 7: Send Notifications
+      await this.sendOrderNotifications(confirmedOrder);
+      this.logger.info('Notifications sent', { workflowId });
+
+      return {
+        success: true,
+        order: confirmedOrder,
+        workflowId
+      };
+
+    } catch (error) {
+      this.logger.error('Order placement workflow failed', { 
+        workflowId, 
+        error: error.message,
+        stack: error.stack 
+      });
+
+      // Handle rollback
+      await this.handleWorkflowFailure(userId, error, workflowId);
+
+      throw error;
     }
   }
-  
-  return cart;
-}
-```
 
-**Step 2: Order Creation**
+  async validateCart(userId) {
+    // Get cart
+    const cart = await this.cartService.getCart(userId, null);
 
-Once cart is validated, create order record:
+    // Check if cart is empty
+    if (!cart.items || cart.items.length === 0) {
+      throw new ValidationError('Cannot place order: Cart is empty');
+    }
 
-```javascript
-async createOrderFromCart(userId, checkoutData) {
-  // Validate cart
-  const cart = await this.validateCartForCheckout(userId);
-  
-  // Generate unique order number
-  const orderNumber = await this.generateOrderNumber();
-  
-  // Prepare order data
-  const orderData = {
-    orderNumber,
-    userId,
-    status: 'pending',
-    paymentStatus: 'pending',
-    items: cart.items.map(item => ({
-      productId: item.productId,
-      variantId: item.variantId,
-      quantity: item.quantity,
-      price: item.priceSnapshot, // Use snapshot price
-      total: item.priceSnapshot * item.quantity
-    })),
-    subtotal: cart.subtotal,
-    tax: cart.tax,
-    shipping: cart.shipping,
-    discount: cart.discount,
-    total: cart.total,
-    shippingAddress: checkoutData.shippingAddress,
-    billingAddress: checkoutData.billingAddress || checkoutData.shippingAddress,
-    paymentMethod: checkoutData.paymentMethod,
-    shippingMethod: checkoutData.shippingMethod,
-    notes: checkoutData.notes || ''
-  };
-  
-  // Create order in database (within transaction)
-  const order = await this.orderRepository.create(orderData);
-  
-  return order;
-}
-```
+    // Validate inventory availability
+    for (const item of cart.items) {
+      const product = await this.inventoryService.getProduct(item.productId);
+      
+      if (!product.isActive) {
+        throw new ValidationError(`Product ${product.name} is no longer available`);
+      }
 
-**Step 3: Payment Processing**
+      if (product.quantity < item.quantity) {
+        throw new ValidationError(
+          `Insufficient inventory for ${product.name}. Available: ${product.quantity}, Requested: ${item.quantity}`
+        );
+      }
+    }
 
-Process payment and update order status:
+    // Recalculate totals to ensure accuracy
+    const recalculatedCart = await this.cartService.calculateTotals(cart);
 
-```javascript
-async processOrderPayment(order) {
-  try {
-    // Attempt payment processing
-    const paymentResult = await this.paymentService.processPayment({
-      orderId: order.id,
-      amount: order.total,
-      paymentMethod: order.paymentMethod,
-      currency: 'USD'
-    });
-    
-    // Update order payment status
-    await this.orderRepository.updatePaymentStatus(order.id, 'paid');
-    await this.orderRepository.updateStatus(order.id, 'confirmed');
-    
-    return paymentResult;
-  } catch (error) {
-    // Payment failed - update status and rollback
-    await this.orderRepository.updatePaymentStatus(order.id, 'failed');
-    await this.orderRepository.updateStatus(order.id, 'payment_failed');
-    
-    // Restore inventory
-    await this.inventoryService.restoreInventory(order.items);
-    
-    throw new PaymentError(`Payment processing failed: ${error.message}`);
+    return recalculatedCart;
   }
-}
-```
 
-**Step 4: Cart Clearance**
+  async prepareOrder(userId, cart, orderData) {
+    // Validate addresses
+    this.validateAddress(orderData.shippingAddress, 'shipping');
+    this.validateAddress(orderData.billingAddress, 'billing');
 
-After successful payment, clear the cart:
+    // Generate order number
+    const orderNumber = await this.orderService.generateOrderNumber();
 
-```javascript
-async clearCartAfterOrder(userId, orderId) {
-  try {
-    await this.cartService.clearCart(userId, null);
-    
-    // Log cart clearance
-    await this.auditService.log({
-      action: 'cart_cleared',
+    // Prepare order object
+    return {
+      orderNumber,
       userId,
-      orderId,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    // Log error but don't fail order
-    console.error('Failed to clear cart after order:', error);
+      status: 'pending',
+      paymentStatus: 'pending',
+      items: cart.items.map(item => ({
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        price: item.currentPriceSnapshot,
+        total: item.total
+      })),
+      subtotal: cart.subtotal,
+      tax: cart.tax,
+      shipping: cart.shipping,
+      discount: cart.discount,
+      total: cart.total,
+      shippingAddress: orderData.shippingAddress,
+      billingAddress: orderData.billingAddress,
+      paymentMethod: orderData.paymentMethod,
+      shippingMethod: orderData.shippingMethod,
+      notes: orderData.notes || ''
+    };
   }
-}
-```
 
-**Step 5: Order Confirmation**
+  async createOrderWithReservation(orderData) {
+    const client = await db.getClient();
 
-Send confirmation notifications:
+    try {
+      await client.query('BEGIN');
 
-```javascript
-async confirmOrder(order) {
-  // Send email confirmation
-  await this.notificationService.sendOrderConfirmation({
-    orderId: order.id,
-    orderNumber: order.orderNumber,
-    userEmail: order.user.email,
-    items: order.items,
-    total: order.total,
-    shippingAddress: order.shippingAddress
-  });
-  
-  // Send SMS notification (if enabled)
-  if (order.user.phoneNumber && order.user.smsNotificationsEnabled) {
-    await this.notificationService.sendSMS({
-      phoneNumber: order.user.phoneNumber,
-      message: `Your order ${order.orderNumber} has been confirmed. Total: $${order.total}`
-    });
-  }
-  
-  // Create order tracking record
-  await this.trackingService.createTracking({
-    orderId: order.id,
-    status: 'confirmed',
-    timestamp: new Date()
-  });
-}
-```
+      // Create order
+      const order = await this.orderService.orderRepository.create(orderData);
 
-**Complete Order Placement Flow**:
+      // Reserve inventory
+      for (const item of orderData.items) {
+        await this.inventoryService.reserveInventory(
+          item.productId, 
+          item.quantity, 
+          order.id
+        );
+      }
 
-```javascript
-async placeOrder(userId, checkoutData) {
-  let order = null;
-  
-  try {
-    // Step 1: Validate cart
-    const cart = await this.validateCartForCheckout(userId);
-    
-    // Step 2: Create order
-    order = await this.createOrderFromCart(userId, checkoutData);
-    
-    // Step 3: Process payment
-    await this.processOrderPayment(order);
-    
-    // Step 4: Clear cart
-    await this.clearCartAfterOrder(userId, order.id);
-    
-    // Step 5: Send confirmations
-    await this.confirmOrder(order);
-    
-    // Return complete order
-    return await this.orderRepository.findById(order.id);
-    
-  } catch (error) {
-    // Handle errors and rollback if necessary
-    if (order && order.id) {
-      await this.handleOrderPlacementError(order.id, error);
+      await client.query('COMMIT');
+      return order;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw new Error('Failed to create order: ' + error.message);
+    } finally {
+      client.release();
     }
-    
-    throw error;
   }
-}
 
-async handleOrderPlacementError(orderId, error) {
-  // Log error
-  console.error('Order placement error:', error);
-  
-  // Update order status
-  await this.orderRepository.updateStatus(orderId, 'failed');
-  
-  // Restore inventory if order was created
-  const order = await this.orderRepository.findById(orderId);
-  if (order && order.items) {
-    await this.inventoryService.restoreInventory(order.items);
+  async processPayment(order) {
+    try {
+      const paymentResult = await this.paymentService.processPayment(order);
+      
+      // Update payment status
+      await this.orderService.orderRepository.updatePaymentStatus(
+        order.id, 
+        'paid'
+      );
+
+      return paymentResult;
+
+    } catch (error) {
+      // Update payment status to failed
+      await this.orderService.orderRepository.updatePaymentStatus(
+        order.id, 
+        'failed'
+      );
+
+      // Release reserved inventory
+      await this.inventoryService.releaseReservation(order.id);
+
+      throw new Error('Payment processing failed: ' + error.message);
+    }
   }
-  
-  // Notify user of failure
-  await this.notificationService.sendOrderFailureNotification({
-    orderId,
-    error: error.message
-  });
+
+  async confirmOrder(order, paymentResult) {
+    // Update order status to confirmed
+    const confirmedOrder = await this.orderService.orderRepository.updateStatus(
+      order.id, 
+      'confirmed'
+    );
+
+    // Commit inventory reservation (deduct from available stock)
+    await this.inventoryService.commitReservation(order.id);
+
+    return confirmedOrder;
+  }
+
+  async sendOrderNotifications(order) {
+    // Send order confirmation email
+    await this.notificationService.sendOrderConfirmation(order);
+
+    // Send SMS notification (if enabled)
+    if (order.shippingAddress.phoneNumber) {
+      await this.notificationService.sendOrderConfirmationSMS(order);
+    }
+
+    // Trigger internal notifications
+    await this.notificationService.notifyFulfillmentTeam(order);
+  }
+
+  async handleWorkflowFailure(userId, error, workflowId) {
+    this.logger.error('Handling workflow failure', { workflowId, error: error.message });
+
+    try {
+      // Attempt to restore cart if it was cleared
+      // This is handled in OrderService.createOrder with restoreCartFromOrder
+      
+      // Log failure for monitoring
+      await this.logger.error('Order placement failed', {
+        workflowId,
+        userId,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (rollbackError) {
+      this.logger.error('Rollback failed', { 
+        workflowId, 
+        error: rollbackError.message 
+      });
+    }
+  }
+
+  validateAddress(address, type) {
+    const requiredFields = [
+      'firstName', 'lastName', 'addressLine1', 
+      'city', 'state', 'postalCode', 'country'
+    ];
+
+    for (const field of requiredFields) {
+      if (!address[field]) {
+        throw new ValidationError(
+          `${type} address is missing required field: ${field}`
+        );
+      }
+    }
+  }
+
+  generateWorkflowId() {
+    return `WF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
 }
+```
+
+**Order Placement Workflow Diagram**:
+
+```mermaid
+flowchart TD
+    A[Start Order Placement] --> B[Validate Cart]
+    B --> C{Cart Valid?}
+    C -->|No| D[Return Error: Empty/Invalid Cart]
+    C -->|Yes| E[Validate Inventory]
+    
+    E --> F{Inventory Available?}
+    F -->|No| G[Return Error: Insufficient Inventory]
+    F -->|Yes| H[Prepare Order Data]
+    
+    H --> I[Generate Order Number]
+    I --> J[Create Order Record]
+    J --> K[Reserve Inventory]
+    
+    K --> L{Reservation Success?}
+    L -->|No| M[Rollback Order Creation]
+    L -->|Yes| N[Process Payment]
+    
+    N --> O{Payment Success?}
+    O -->|No| P[Update Payment Status: Failed]
+    P --> Q[Release Inventory Reservation]
+    Q --> R[Restore Cart State]
+    R --> S[Return Error: Payment Failed]
+    
+    O -->|Yes| T[Update Payment Status: Paid]
+    T --> U[Update Order Status: Confirmed]
+    U --> V[Commit Inventory Reservation]
+    V --> W[Clear Shopping Cart]
+    W --> X[Send Confirmation Email]
+    X --> Y[Notify Fulfillment Team]
+    Y --> Z[Return Success: Order Confirmed]
+    
+    style D fill:#ffcccc
+    style G fill:#ffcccc
+    style M fill:#ffcccc
+    style S fill:#ffcccc
+    style Z fill:#ccffcc
 ```
 
 **State Transition Diagram**:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CartValidation
-    CartValidation --> OrderCreation: Valid
-    CartValidation --> [*]: Invalid (Error)
+    [*] --> CartActive: User adds items
+    CartActive --> CartValidated: Validate cart
+    CartValidated --> OrderPending: Create order
+    OrderPending --> PaymentProcessing: Process payment
     
-    OrderCreation --> PaymentProcessing: Order Created
-    OrderCreation --> [*]: Creation Failed (Error)
+    PaymentProcessing --> PaymentFailed: Payment fails
+    PaymentProcessing --> PaymentSucceeded: Payment succeeds
     
-    PaymentProcessing --> PaymentSuccess: Payment Approved
-    PaymentProcessing --> PaymentFailed: Payment Declined
+    PaymentFailed --> CartRestored: Restore cart
+    CartRestored --> CartActive: User retries
     
-    PaymentSuccess --> InventoryDeduction
-    PaymentFailed --> InventoryRestore
-    PaymentFailed --> [*]: Order Failed
+    PaymentSucceeded --> OrderConfirmed: Confirm order
+    OrderConfirmed --> CartCleared: Clear cart
+    CartCleared --> [*]: Order complete
     
-    InventoryDeduction --> CartClearance
-    CartClearance --> OrderConfirmation
-    OrderConfirmation --> [*]: Order Complete
+    note right of PaymentFailed
+        Inventory reservation released
+        Cart state restored
+    end note
     
-    InventoryRestore --> [*]: Order Cancelled
+    note right of OrderConfirmed
+        Inventory committed
+        Notifications sent
+    end note
 ```
-
-**Workflow Sequence Diagram**:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant OrderService
-    participant CartService
-    participant PaymentService
-    participant InventoryService
-    participant NotificationService
-    participant Database
-    
-    User->>OrderService: placeOrder(checkoutData)
-    OrderService->>CartService: validateCartForCheckout(userId)
-    CartService->>Database: Fetch Cart & Items
-    Database-->>CartService: Cart Data
-    CartService->>CartService: Validate Items & Inventory
-    CartService-->>OrderService: Validated Cart
-    
-    OrderService->>Database: Create Order Record
-    Database-->>OrderService: Order Created
-    
-    OrderService->>PaymentService: processPayment(order)
-    PaymentService->>PaymentService: Process Payment
-    PaymentService-->>OrderService: Payment Success
-    
-    OrderService->>Database: Update Order Status (confirmed)
-    OrderService->>InventoryService: Deduct Inventory
-    InventoryService->>Database: Update Product Quantities
-    
-    OrderService->>CartService: clearCart(userId)
-    CartService->>Database: Delete Cart Items
-    
-    OrderService->>NotificationService: sendOrderConfirmation(order)
-    NotificationService->>User: Email Confirmation
-    
-    OrderService-->>User: Order Confirmation Response
-```
-
-**Error Handling and Rollback**:
-
-| Error Stage | Rollback Action | User Impact |
-|-------------|-----------------|-------------|
-| Cart Validation Failed | None | User notified to review cart |
-| Order Creation Failed | None | User notified to retry |
-| Payment Failed | Restore inventory, mark order as failed | User notified, cart preserved |
-| Inventory Deduction Failed | Refund payment, cancel order | User notified, full refund |
-| Cart Clearance Failed | None (order still valid) | Cart manually cleared later |
-| Notification Failed | None (order still valid) | Retry notification |
-
-**Business Rules**:
-
-1. Cart must be validated immediately before order creation
-2. Order creation and payment processing must be atomic
-3. Inventory deduction occurs only after successful payment
-4. Cart is cleared only after successful payment
-5. Order confirmation is sent regardless of cart clearance status
-6. All state transitions are logged for audit trail
-7. Failed orders trigger automatic inventory restoration
-8. Users are notified at each critical stage
 
 ### 3.5 Payment Processing Module
 
@@ -2507,7 +2377,7 @@ CREATE TABLE cart_items (
   variant_id INTEGER,
   quantity INTEGER NOT NULL,
   price DECIMAL(10, 2) NOT NULL,
-  price_snapshot DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  current_price_snapshot DECIMAL(10, 2) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(cart_id, product_id, variant_id)
@@ -2601,7 +2471,6 @@ CREATE INDEX idx_products_sku ON products(sku);
 CREATE INDEX idx_orders_user ON orders(user_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_cart_items_cart ON cart_items(cart_id);
-CREATE INDEX idx_cart_items_price_snapshot ON cart_items(price_snapshot);
 CREATE INDEX idx_order_items_order ON order_items(order_id);
 ```
 
@@ -2827,6 +2696,7 @@ class Database {
         "productId": 1,
         "quantity": 2,
         "price": 99.99,
+        "currentPriceSnapshot": 99.99,
         "subtotal": 199.98,
         "product": {
           "id": 1,
@@ -2890,6 +2760,7 @@ class Database {
         "productId": 1,
         "quantity": 2,
         "price": 99.99,
+        "currentPriceSnapshot": 99.99,
         "subtotal": 199.98,
         "product": {
           "id": 1,
@@ -2924,6 +2795,7 @@ class Database {
         "productId": 1,
         "quantity": 3,
         "price": 99.99,
+        "currentPriceSnapshot": 99.99,
         "subtotal": 299.97,
         "product": {
           "id": 1,
