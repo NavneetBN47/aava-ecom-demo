@@ -737,96 +737,111 @@ class CartService {
 }
 ```
 
-#### 3.3.4 Empty Cart UI Redirection Logic
+#### 3.3.4 Cart UI Redirection Logic for Empty Cart State
 
-**Purpose**: Implement UI redirection logic for empty cart state to enhance user experience.
+**Purpose**: Implement UI redirection logic to handle empty cart state and guide users to continue shopping.
 
 **Business Rule Reference**: story_summary.json: business_logic_rules[1]
 
 **Implementation Details**:
 
-When the shopping cart is empty, the system must provide a clear path for users to continue shopping. This is implemented through both backend response structure and frontend handling.
+When the shopping cart is empty, the system must provide a clear user experience by redirecting or displaying a "Continue Shopping" link to guide users back to the product catalog.
 
-**Backend Response Structure**:
 ```javascript
-class CartService {
-  async getCart(userId, sessionId) {
-    let cart;
-    
-    if (userId) {
-      cart = await this.cartRepository.findByUserId(userId);
-    } else {
-      cart = await this.cartRepository.findBySessionId(sessionId);
-    }
-
-    if (!cart) {
-      cart = await this.cartRepository.create({ userId, sessionId });
-    }
-
-    // Calculate totals
-    cart = await this.calculateTotals(cart);
-
-    // Add empty cart metadata for UI handling
-    if (!cart.items || cart.items.length === 0) {
-      cart.isEmpty = true;
-      cart.continueShopping = {
-        url: '/products',
-        message: 'Your cart is empty. Continue shopping to add items.'
-      };
-    } else {
-      cart.isEmpty = false;
-    }
-
-    return cart;
+class CartUIService {
+  constructor() {
+    this.cartService = new CartService();
   }
-}
-```
 
-**Frontend UI Redirection Logic**:
-```javascript
-// Cart Component Handler
-class CartUIHandler {
-  async displayCart(userId, sessionId) {
-    const cart = await cartService.getCart(userId, sessionId);
+  async getCartWithUIState(userId, sessionId) {
+    const cart = await this.cartService.getCart(userId, sessionId);
     
     // Check if cart is empty
-    if (cart.isEmpty) {
-      // Display empty cart message with continue shopping link
-      this.renderEmptyCartState(cart.continueShopping);
-    } else {
-      // Display cart items
-      this.renderCartItems(cart);
-    }
-  }
-
-  renderEmptyCartState(continueShoppingData) {
-    // Render empty cart UI with prominent "Continue Shopping" link
-    const emptyCartHTML = `
-      <div class="empty-cart-container">
-        <div class="empty-cart-icon">
-          <i class="icon-shopping-cart"></i>
-        </div>
-        <h2>Your Cart is Empty</h2>
-        <p>${continueShoppingData.message}</p>
-        <a href="${continueShoppingData.url}" class="btn btn-primary">
-          Continue Shopping
-        </a>
-      </div>
-    `;
+    const isEmpty = !cart.items || cart.items.length === 0;
     
-    document.getElementById('cart-content').innerHTML = emptyCartHTML;
+    return {
+      ...cart,
+      isEmpty,
+      uiState: {
+        showEmptyCartMessage: isEmpty,
+        continueShoppingUrl: isEmpty ? '/products' : null,
+        emptyCartMessage: isEmpty ? 'Your cart is empty. Continue shopping to add items.' : null
+      }
+    };
   }
 
-  renderCartItems(cart) {
-    // Render cart items with subtotals and total
-    // Implementation details...
+  async handleEmptyCartRedirection(req, res) {
+    const cart = await this.getCartWithUIState(req.user?.id, req.sessionId);
+    
+    if (cart.isEmpty) {
+      // Return response with redirection information
+      return res.status(200).json({
+        success: true,
+        data: cart,
+        redirect: {
+          required: true,
+          url: '/products',
+          message: 'Your cart is empty. Redirecting to products...'
+        }
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      data: cart
+    });
   }
 }
 ```
 
-**API Response Enhancement**:
+**Frontend Integration**:
+
 ```javascript
-// GET /api/cart response when cart is empty
+// Example frontend handler for empty cart redirection
+class CartViewController {
+  async loadCart() {
+    try {
+      const response = await fetch('/api/cart');
+      const data = await response.json();
+      
+      if (data.redirect && data.redirect.required) {
+        // Show message and redirect
+        this.showMessage(data.redirect.message);
+        setTimeout(() => {
+          window.location.href = data.redirect.url;
+        }, 2000);
+      } else {
+        this.renderCart(data.data);
+      }
+    } catch (error) {
+      console.error('Error loading cart:', error);
+    }
+  }
+  
+  renderCart(cart) {
+    if (cart.isEmpty) {
+      // Display empty cart UI with continue shopping link
+      const emptyCartHTML = `
+        <div class="empty-cart">
+          <h2>Your Cart is Empty</h2>
+          <p>${cart.uiState.emptyCartMessage}</p>
+          <a href="${cart.uiState.continueShoppingUrl}" class="btn btn-primary">
+            Continue Shopping
+          </a>
+        </div>
+      `;
+      document.getElementById('cart-container').innerHTML = emptyCartHTML;
+    } else {
+      // Render cart items
+      this.renderCartItems(cart.items);
+    }
+  }
+}
+```
+
+**API Response Format for Empty Cart**:
+
+```json
 {
   "success": true,
   "data": {
@@ -838,51 +853,37 @@ class CartUIHandler {
     "discount": 0,
     "total": 0,
     "isEmpty": true,
-    "continueShopping": {
-      "url": "/products",
-      "message": "Your cart is empty. Continue shopping to add items."
+    "uiState": {
+      "showEmptyCartMessage": true,
+      "continueShoppingUrl": "/products",
+      "emptyCartMessage": "Your cart is empty. Continue shopping to add items."
     }
+  },
+  "redirect": {
+    "required": true,
+    "url": "/products",
+    "message": "Your cart is empty. Redirecting to products..."
   }
 }
 ```
 
-**Mermaid Sequence Diagram - Empty Cart Flow**:
+**Mermaid Diagram - Empty Cart Redirection Flow**:
+
 ```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant CartService
-    participant CartRepository
-    participant Database
-
-    User->>Frontend: Access Cart Page
-    Frontend->>CartService: getCart(userId, sessionId)
-    CartService->>CartRepository: findByUserId(userId)
-    CartRepository->>Database: SELECT cart and items
-    Database-->>CartRepository: Return cart data
-    CartRepository-->>CartService: Return cart
+flowchart TD
+    A[User Accesses Cart] --> B{Is Cart Empty?}
+    B -->|Yes| C[Display Empty Cart Message]
+    C --> D[Show Continue Shopping Link]
+    D --> E[User Clicks Link]
+    E --> F[Redirect to Products Page]
+    B -->|No| G[Display Cart Items]
+    G --> H[Show Checkout Button]
     
-    alt Cart is empty
-        CartService->>CartService: Set isEmpty = true
-        CartService->>CartService: Add continueShopping metadata
-        CartService-->>Frontend: Return cart with empty state
-        Frontend->>Frontend: renderEmptyCartState()
-        Frontend-->>User: Display empty cart with "Continue Shopping" link
-        User->>Frontend: Click "Continue Shopping"
-        Frontend->>Frontend: Redirect to /products
-    else Cart has items
-        CartService-->>Frontend: Return cart with items
-        Frontend->>Frontend: renderCartItems()
-        Frontend-->>User: Display cart items
-    end
+    style C fill:#ffcccc
+    style D fill:#ffeecc
+    style F fill:#ccffcc
+    style G fill:#ccffee
 ```
-
-**Key Implementation Points**:
-1. Backend automatically detects empty cart state
-2. Response includes `isEmpty` flag and `continueShopping` metadata
-3. Frontend checks `isEmpty` flag and renders appropriate UI
-4. "Continue Shopping" link redirects to product catalog
-5. Empty cart state is handled gracefully without errors
 
 ### 3.4 Order Management Module
 
@@ -1719,7 +1720,7 @@ class Database {
 
 #### GET /api/cart
 ```javascript
-// Response (200 OK) - Cart with items
+// Response (200 OK) - Cart with Items
 {
   "success": true,
   "data": {
@@ -1747,7 +1748,7 @@ class Database {
   }
 }
 
-// Response (200 OK) - Empty cart
+// Response (200 OK) - Empty Cart with Redirection
 {
   "success": true,
   "data": {
@@ -1759,10 +1760,16 @@ class Database {
     "discount": 0,
     "total": 0,
     "isEmpty": true,
-    "continueShopping": {
-      "url": "/products",
-      "message": "Your cart is empty. Continue shopping to add items."
+    "uiState": {
+      "showEmptyCartMessage": true,
+      "continueShoppingUrl": "/products",
+      "emptyCartMessage": "Your cart is empty. Continue shopping to add items."
     }
+  },
+  "redirect": {
+    "required": true,
+    "url": "/products",
+    "message": "Your cart is empty. Redirecting to products..."
   }
 }
 ```
@@ -1798,9 +1805,7 @@ class Database {
     "subtotal": 199.98,
     "tax": 15.99,
     "shipping": 10.00,
-    "discount": 0,
-    "total": 225.97,
-    "isEmpty": false
+    "total": 225.97
   }
 }
 ```
@@ -1834,9 +1839,7 @@ class Database {
     "subtotal": 299.97,
     "tax": 23.99,
     "shipping": 10.00,
-    "discount": 0,
-    "total": 333.96,
-    "isEmpty": false
+    "total": 333.96
   }
 }
 ```
@@ -1852,12 +1855,12 @@ class Database {
     "subtotal": 0,
     "tax": 0,
     "shipping": 0,
-    "discount": 0,
     "total": 0,
     "isEmpty": true,
-    "continueShopping": {
-      "url": "/products",
-      "message": "Your cart is empty. Continue shopping to add items."
+    "uiState": {
+      "showEmptyCartMessage": true,
+      "continueShoppingUrl": "/products",
+      "emptyCartMessage": "Your cart is empty. Continue shopping to add items."
     }
   }
 }
