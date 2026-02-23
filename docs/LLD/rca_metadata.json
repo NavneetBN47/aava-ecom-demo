@@ -1,1 +1,50 @@
-{"add": [{"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.api_contracts_required[POST /api/v1/cart/items]", "description": "Explicit API contract for POST /api/v1/cart/items endpoint is required, including request/response schema, error handling, and authentication details.", "reason": "The story summary requires this endpoint and its contract, but the LLD only describes the backend logic and does not provide a formal API contract."}, {"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.api_contracts_required[GET /api/v1/cart]", "description": "Explicit API contract for GET /api/v1/cart endpoint is required, including response schema, error handling, and authentication details.", "reason": "The story summary requires this endpoint and its contract, but the LLD only describes the backend logic and does not provide a formal API contract."}, {"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.api_contracts_required[PUT /api/v1/cart/items/{itemId}]", "description": "Explicit API contract for PUT /api/v1/cart/items/{itemId} endpoint is required, including request/response schema, error handling, and authentication details.", "reason": "The story summary requires this endpoint and its contract, but the LLD only describes the backend logic and does not provide a formal API contract."}, {"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.api_contracts_required[DELETE /api/v1/cart/items/{itemId}]", "description": "Explicit API contract for DELETE /api/v1/cart/items/{itemId} endpoint is required, including response schema, error handling, and authentication details.", "reason": "The story summary requires this endpoint and its contract, but the LLD only describes the backend logic and does not provide a formal API contract."}, {"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.presentation_layer_needs[Cart View Interface]", "description": "Detailed UI specification for Cart View Interface is required.", "reason": "The story summary requires a Cart View Interface, but the LLD does not include UI or frontend specifications."}, {"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.presentation_layer_needs[Empty Cart View with Redirection Link]", "description": "Detailed UI specification for Empty Cart View with Redirection Link is required.", "reason": "The story summary requires this UI behavior, but the LLD does not include UI or frontend specifications."}, {"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.presentation_layer_needs['Add to Cart' Interaction Handler]", "description": "Detailed UI specification for 'Add to Cart' Interaction Handler is required.", "reason": "The story summary requires this UI behavior, but the LLD does not include UI or frontend specifications."}, {"section": "Shopping Cart Module", "requirement_reference": "story_summary_json.architectural_components.presentation_layer_needs[Quantity Updater Component]", "description": "Detailed UI specification for Quantity Updater Component is required.", "reason": "The story summary requires this UI behavior, but the LLD does not include UI or frontend specifications."}], "modify": null, "delete": null}
+{
+  "add": [
+    {
+      "requirement_id": "REQ-CART-001",
+      "requirement_description": "Implement Cart API to add items to shopping cart",
+      "component": "Cart Service",
+      "changes": [
+        {
+          "change_type": "new_endpoint",
+          "endpoint": "/api/v1/cart/add",
+          "method": "POST",
+          "description": "Add item to cart with quantity and product details"
+        },
+        {
+          "change_type": "new_model",
+          "model_name": "CartItem",
+          "fields": ["product_id", "quantity", "price", "user_id"]
+        }
+      ]
+    }
+  ],
+  "modify": [
+    {
+      "requirement_id": "REQ-CART-002",
+      "requirement_description": "Update cart item quantity validation",
+      "component": "Cart Service",
+      "changes": [
+        {
+          "change_type": "update_validation",
+          "endpoint": "/api/v1/cart/update",
+          "validation_rules": ["quantity must be positive integer", "max quantity 99"]
+        }
+      ]
+    }
+  ],
+  "delete": [
+    {
+      "requirement_id": "REQ-CART-003",
+      "requirement_description": "Remove deprecated cart merge endpoint",
+      "component": "Cart Service",
+      "changes": [
+        {
+          "change_type": "remove_endpoint",
+          "endpoint": "/api/v1/cart/merge",
+          "reason": "Functionality moved to cart sync service"
+        }
+      ]
+    }
+  ]
+}
