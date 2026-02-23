@@ -138,6 +138,7 @@ classDiagram
         +getProductsByCategory(String) List~Product~
         +searchProducts(String) List~Product~
         +checkStock(Long, Integer) boolean
+        +validateOrderQuantity(Long, Integer) boolean
     }
 
     class CartService {
@@ -149,6 +150,9 @@ classDiagram
         +removeCartItem(Long) void
         +clearCart() void
         +calculateCartTotal() BigDecimal
+        +validateStockAvailability(Long, Integer) boolean
+        +validatePriceConsistency(Long, BigDecimal) boolean
+        +enforceQuantityLimits(Long, Integer) boolean
     }
 
     class ProductRepository {
@@ -306,6 +310,7 @@ sequenceDiagram
   - Name: Required, max 255 characters
   - Price: Required, positive value
   - Stock Quantity: Required, non-negative
+  - Max Order Quantity: Optional, positive value
   - Category: Required
 - **Success Response**: 201 Created with product details
 - **Error Response**: 400 Bad Request for validation errors
@@ -463,19 +468,19 @@ sequenceDiagram
     
     alt Product Exists
         ProductService-->>CartService: Product
-        CartService->>ProductService: checkStock(productId, quantity)
+        CartService->>CartService: validateStockAvailability(productId, quantity)
+        CartService->>CartService: enforceQuantityLimits(productId, quantity)
+        CartService->>CartService: validatePriceConsistency(productId, price)
         
-        alt Stock Available
-            ProductService-->>CartService: true
+        alt All Validations Pass
             CartService->>ShoppingCart: addItem(cartItem)
             ShoppingCart->>ShoppingCart: calculateSubtotal()
             ShoppingCart->>ShoppingCart: calculateTotal()
             ShoppingCart-->>CartService: Updated Cart
             CartService-->>CartController: CartItem
             CartController-->>Client: 201 Created + CartItem
-        else Insufficient Stock
-            ProductService-->>CartService: false
-            CartService-->>CartController: throw InsufficientStockException
+        else Validation Failed
+            CartService-->>CartController: throw ValidationException
             CartController-->>Client: 400 Bad Request
         end
     else Product Not Found
@@ -492,10 +497,12 @@ sequenceDiagram
   - Product must exist
   - Quantity must be positive
   - Sufficient stock must be available
+  - Quantity must not exceed max_order_quantity
+  - Price consistency check
 - **Success Response**: 201 Created with cart item details
 - **Error Responses**:
   - 404 Not Found if product doesn't exist
-  - 400 Bad Request if insufficient stock
+  - 400 Bad Request if validation fails
 
 #### 3.2.2 View Shopping Cart
 
@@ -610,123 +617,9 @@ sequenceDiagram
 
 ---
 
-## 4. Presentation Layer Components
+## 4. API Endpoints Summary
 
-### 4.1 Shopping Cart UI Component
-
-The shopping cart user interface provides an interactive and responsive experience for managing cart items.
-
-#### 4.1.1 Cart Component Architecture
-
-```mermaid
-flowchart TD
-    A[Cart Component] --> B[Item List Display]
-    A --> C[Quantity Selector]
-    A --> D[Remove Button]
-    A --> E[Total Display]
-    A --> F[Checkout Button]
-    
-    B --> G[Product Image]
-    B --> H[Product Name]
-    B --> I[Product Price]
-    B --> J[Subtotal]
-    
-    C --> K[Increment Button]
-    C --> L[Decrement Button]
-    C --> M[Quantity Input]
-    
-    E --> N[Subtotal Calculation]
-    E --> O[Tax Calculation]
-    E --> P[Grand Total]
-    
-    F --> Q[Validate Cart]
-    F --> R[Navigate to Checkout]
-```
-
-#### 4.1.2 Cart Component Features
-
-**Core Features:**
-- **Item List Display**: Shows all products added to cart with details
-  - Product image thumbnail
-  - Product name and description
-  - Unit price
-  - Quantity
-  - Line item subtotal
-
-- **Quantity Selector**: Interactive controls for adjusting item quantities
-  - Increment/decrement buttons
-  - Direct numeric input
-  - Real-time validation against stock availability
-  - Real-time subtotal updates
-
-- **Remove Button**: One-click removal of items from cart
-  - Confirmation dialog for accidental clicks
-  - Immediate cart total recalculation
-
-- **Total Display**: Comprehensive cost breakdown
-  - Items subtotal
-  - Tax calculation (if applicable)
-  - Shipping estimates
-  - Grand total
-
-- **Checkout Button**: Initiates checkout process
-  - Validates cart contents
-  - Checks stock availability
-  - Navigates to checkout flow
-
-#### 4.1.3 Responsive Design
-
-The cart component is fully responsive and adapts to different screen sizes:
-
-**Desktop View (>1024px):**
-- Multi-column layout
-- Side-by-side product details and controls
-- Sticky total summary panel
-
-**Tablet View (768px - 1024px):**
-- Two-column layout
-- Stacked product information
-- Floating checkout button
-
-**Mobile View (<768px):**
-- Single-column layout
-- Compact product cards
-- Bottom-fixed checkout bar
-- Swipe-to-delete gesture support
-
-#### 4.1.4 Cart Component State Management
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant CartUI
-    participant StateManager
-    participant CartAPI
-    participant Backend
-
-    User->>CartUI: Add Item
-    CartUI->>StateManager: updateCart(item)
-    StateManager->>CartAPI: POST /api/cart/items
-    CartAPI->>Backend: Save Cart Item
-    Backend-->>CartAPI: Success
-    CartAPI-->>StateManager: Updated Cart
-    StateManager-->>CartUI: Re-render
-    CartUI-->>User: Display Updated Cart
-```
-
-**State Management Features:**
-- Local state for immediate UI updates
-- Optimistic UI updates for better UX
-- Background synchronization with backend
-- Error handling and rollback on failure
-- Session persistence for guest users
-- User-specific cart for authenticated users
-
----
-
-## 5. API Endpoints Summary
-
-### 5.1 Product Endpoints
+### 4.1 Product Endpoints
 
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|--------------|----------|
@@ -738,7 +631,7 @@ sequenceDiagram
 | GET | `/api/products/category/{category}` | Get products by category | - | 200 OK + List<Product> |
 | GET | `/api/products/search?keyword={keyword}` | Search products | - | 200 OK + List<Product> |
 
-### 5.2 Cart Endpoints
+### 4.2 Cart Endpoints
 
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|--------------|----------|
@@ -750,9 +643,9 @@ sequenceDiagram
 
 ---
 
-## 6. Database Schema
+## 5. Database Schema
 
-### 6.1 Products Table
+### 5.1 Products Table
 
 ```sql
 CREATE TABLE products (
@@ -761,7 +654,7 @@ CREATE TABLE products (
     description TEXT,
     price DECIMAL(10, 2) NOT NULL,
     stock_quantity INTEGER NOT NULL DEFAULT 0,
-    max_order_quantity INTEGER DEFAULT 999,
+    max_order_quantity INTEGER DEFAULT NULL,
     category VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -769,9 +662,10 @@ CREATE TABLE products (
 
 CREATE INDEX idx_products_category ON products(category);
 CREATE INDEX idx_products_name ON products(name);
+CREATE INDEX idx_products_stock ON products(stock_quantity);
 ```
 
-### 6.2 Cart Items Table
+### 5.2 Cart Items Table
 
 ```sql
 CREATE TABLE cart_items (
@@ -788,7 +682,7 @@ CREATE TABLE cart_items (
 CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
 ```
 
-### 6.3 Shopping Cart Table
+### 5.3 Shopping Cart Table
 
 ```sql
 CREATE TABLE shopping_carts (
@@ -801,96 +695,228 @@ CREATE TABLE shopping_carts (
 
 ---
 
-## 7. Session Management and Authentication
+## 6. Presentation Layer Components
 
-### 7.1 Cart Persistence Strategy
+### 6.1 Shopping Cart UI Component
 
-The system implements a dual-mode cart persistence strategy to support both authenticated and guest users.
-
-#### 7.1.1 Guest User Cart Management
+#### 6.1.1 Cart Component Architecture
 
 ```mermaid
-sequenceDiagram
-    participant Browser
-    participant Frontend
-    participant SessionStore
-    participant Backend
-
-    Browser->>Frontend: Add Item to Cart
-    Frontend->>SessionStore: Store in Local Storage
-    SessionStore-->>Frontend: Confirmation
-    Frontend->>Backend: Sync Cart (Optional)
-    Backend-->>Frontend: Session ID
-    Frontend->>Browser: Update UI
+flowchart TD
+    A[Cart Component] --> B[Item List Display]
+    A --> C[Quantity Selector]
+    A --> D[Remove Button]
+    A --> E[Total Display]
+    A --> F[Checkout Button]
+    
+    B --> G[Product Image]
+    B --> H[Product Name]
+    B --> I[Unit Price]
+    B --> J[Subtotal]
+    
+    C --> K[Increment Button]
+    C --> L[Decrement Button]
+    C --> M[Quantity Input]
+    
+    E --> N[Subtotal Calculation]
+    E --> O[Tax Calculation]
+    E --> P[Grand Total]
+    
+    F --> Q[Validate Cart]
+    F --> R[Navigate to Checkout]
 ```
 
-**Guest Cart Features:**
-- **Local Storage**: Cart data stored in browser local storage
-- **Session Tracking**: Anonymous session ID generated on first interaction
-- **Expiration**: Guest carts expire after 7 days of inactivity
-- **Migration**: Guest cart automatically migrated to user account upon login
-- **Privacy**: No personal data stored for guest users
+#### 6.1.2 Cart Component Features
 
-#### 7.1.2 Authenticated User Cart Management
+**Core Features:**
+- **Item List Display**: Shows all items currently in the shopping cart
+  - Product image thumbnail
+  - Product name and description
+  - Unit price
+  - Quantity selector
+  - Subtotal per item
+  - Remove button for each item
+
+- **Quantity Selector**: Interactive controls for adjusting item quantities
+  - Increment button (+)
+  - Decrement button (-)
+  - Direct quantity input field
+  - Real-time validation against stock availability
+  - Enforcement of max_order_quantity limits
+
+- **Remove Button**: Allows users to remove items from cart
+  - Confirmation dialog for accidental removals
+  - Immediate cart total recalculation
+  - Smooth animation for item removal
+
+- **Total Display**: Shows comprehensive pricing breakdown
+  - Subtotal of all items
+  - Tax calculation (if applicable)
+  - Shipping costs (if applicable)
+  - Grand total amount
+  - Currency formatting
+
+- **Checkout Button**: Initiates the checkout process
+  - Validates cart contents
+  - Checks stock availability
+  - Navigates to checkout page
+  - Disabled state when cart is empty
+
+**Responsive Design:**
+- Mobile-first approach
+- Adaptive layout for tablets and desktops
+- Touch-friendly controls
+- Optimized for various screen sizes
+- Accessible keyboard navigation
+
+#### 6.1.3 Cart Component State Management
 
 ```mermaid
 sequenceDiagram
     participant User
+    participant CartUI
+    participant StateManager
+    participant CartAPI
+    participant Backend
+
+    User->>CartUI: Add Item to Cart
+    CartUI->>StateManager: Update Local State
+    StateManager->>CartAPI: POST /api/cart/items
+    CartAPI->>Backend: Add Item Request
+    Backend-->>CartAPI: Item Added Response
+    CartAPI-->>StateManager: Update State with Response
+    StateManager-->>CartUI: Render Updated Cart
+    CartUI-->>User: Display Updated Cart
+```
+
+**State Management Features:**
+- Local state synchronization with backend
+- Optimistic UI updates
+- Error handling and rollback
+- Loading states for async operations
+- Real-time cart total calculation
+
+---
+
+## 7. Session Management and Authentication
+
+### 7.1 Cart Persistence Strategy
+
+#### 7.1.1 Session-Based Cart Management
+
+```mermaid
+flowchart TD
+    A[User Session] --> B{Authenticated?}
+    B -->|Yes| C[User-Specific Cart]
+    B -->|No| D[Guest Cart]
+    
+    C --> E[Store in Database]
+    C --> F[Link to User ID]
+    C --> G[Persist Across Sessions]
+    
+    D --> H[Store in Session]
+    D --> I[Temporary Storage]
+    D --> J[Convert on Login]
+    
+    J --> K[Merge with User Cart]
+    K --> L[Resolve Conflicts]
+    L --> M[Update Database]
+```
+
+#### 7.1.2 Cart Persistence Implementation
+
+**Authenticated Users:**
+- Cart data stored in database
+- Linked to user account via user_id
+- Persists across multiple sessions
+- Accessible from any device
+- Automatic synchronization
+
+**Guest Users:**
+- Cart data stored in HTTP session
+- Temporary storage (session lifetime)
+- Browser-specific
+- Converted to persistent cart on login
+- Support for guest checkout
+
+#### 7.1.3 Guest Cart to User Cart Migration
+
+```mermaid
+sequenceDiagram
+    participant Guest
     participant Frontend
     participant AuthService
     participant CartService
     participant Database
 
-    User->>Frontend: Login
-    Frontend->>AuthService: Authenticate
-    AuthService-->>Frontend: JWT Token
-    Frontend->>CartService: Load User Cart
-    CartService->>Database: Fetch Cart by User ID
-    Database-->>CartService: Cart Data
-    CartService-->>Frontend: User Cart
-    Frontend->>Frontend: Merge Guest Cart (if exists)
-    Frontend->>CartService: Update Merged Cart
-    CartService->>Database: Save Cart
+    Guest->>Frontend: Add Items to Guest Cart
+    Frontend->>Frontend: Store in Session
+    Guest->>Frontend: Login/Register
+    Frontend->>AuthService: Authenticate User
+    AuthService-->>Frontend: Authentication Success
+    Frontend->>CartService: Merge Guest Cart with User Cart
+    CartService->>Database: Fetch User's Existing Cart
+    Database-->>CartService: User Cart Data
+    CartService->>CartService: Merge Items (Handle Duplicates)
+    CartService->>Database: Update User Cart
     Database-->>CartService: Success
-    CartService-->>Frontend: Confirmation
-    Frontend-->>User: Display Cart
+    CartService-->>Frontend: Merged Cart
+    Frontend->>Frontend: Clear Session Cart
+    Frontend-->>Guest: Display Merged Cart
 ```
 
-**Authenticated Cart Features:**
-- **User Association**: Cart linked to user account via user_id
-- **Cross-Device Sync**: Cart accessible from any device after login
-- **Persistent Storage**: Cart data stored in database
-- **No Expiration**: Cart persists indefinitely for logged-in users
-- **Cart Merging**: Guest cart items merged with user cart on login
+**Migration Rules:**
+1. Fetch existing user cart from database
+2. Merge guest cart items with user cart
+3. Handle duplicate products:
+   - Sum quantities if same product exists
+   - Validate against stock availability
+   - Respect max_order_quantity limits
+4. Update cart totals
+5. Persist merged cart to database
+6. Clear session-based guest cart
 
-### 7.2 Session Management Configuration
+### 7.2 Authentication Integration
 
-**Session Properties:**
-```yaml
-spring:
-  session:
-    store-type: redis
-    timeout: 30m
-    redis:
-      namespace: ecommerce:session
-  
-cart:
-  guest:
-    expiration-days: 7
-    max-items: 50
-  authenticated:
-    max-items: 100
-    sync-interval: 5m
-```
+#### 7.2.1 Cart API Authentication Requirements
 
-### 7.3 Cart Security
+**Endpoint Authentication Matrix:**
+
+| Endpoint | Authentication Required | Guest Access |
+|----------|------------------------|-------------|
+| POST /api/cart/items | Optional | Yes (Session) |
+| GET /api/cart | Optional | Yes (Session) |
+| PUT /api/cart/items/{itemId} | Optional | Yes (Session) |
+| DELETE /api/cart/items/{itemId} | Optional | Yes (Session) |
+| DELETE /api/cart | Optional | Yes (Session) |
+
+**Authentication Flow:**
+- JWT token validation for authenticated users
+- Session ID validation for guest users
+- Automatic cart migration on authentication
+- Secure cart data isolation
+
+#### 7.2.2 Session Security
 
 **Security Measures:**
-- **CSRF Protection**: All cart modification requests require CSRF token
-- **Rate Limiting**: Maximum 100 cart operations per minute per session
-- **Input Validation**: All cart inputs validated and sanitized
-- **Price Verification**: Product prices verified against database on checkout
-- **Stock Validation**: Real-time stock checks before order placement
+- Secure session cookie configuration
+- HTTPS enforcement
+- Session timeout management
+- CSRF protection
+- XSS prevention
+- Cart data encryption in transit
+
+**Session Configuration:**
+```yaml
+server:
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        secure: true
+        http-only: true
+        same-site: strict
+```
 
 ---
 
@@ -918,10 +944,16 @@ public class CartItemNotFoundException extends RuntimeException {
     }
 }
 
-public class MaxOrderQuantityExceededException extends RuntimeException {
-    public MaxOrderQuantityExceededException(String productName, int requested, int maxAllowed) {
-        super(String.format("Maximum order quantity exceeded for %s. Requested: %d, Maximum allowed: %d",
+public class QuantityLimitExceededException extends RuntimeException {
+    public QuantityLimitExceededException(String productName, int requested, int maxAllowed) {
+        super(String.format("Quantity limit exceeded for %s. Requested: %d, Maximum allowed: %d",
             productName, requested, maxAllowed));
+    }
+}
+
+public class PriceValidationException extends RuntimeException {
+    public PriceValidationException(String message) {
+        super(message);
     }
 }
 ```
@@ -952,8 +984,18 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
     
-    @ExceptionHandler(MaxOrderQuantityExceededException.class)
-    public ResponseEntity<ErrorResponse> handleMaxOrderQuantityExceeded(MaxOrderQuantityExceededException ex) {
+    @ExceptionHandler(QuantityLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleQuantityLimitExceeded(QuantityLimitExceededException ex) {
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+    
+    @ExceptionHandler(PriceValidationException.class)
+    public ResponseEntity<ErrorResponse> handlePriceValidation(PriceValidationException ex) {
         ErrorResponse error = new ErrorResponse(
             HttpStatus.BAD_REQUEST.value(),
             ex.getMessage(),
@@ -1019,14 +1061,14 @@ public class GlobalExceptionHandler {
 - Description: Optional, max 2000 characters
 - Price: Required, positive, max 2 decimal places
 - Stock Quantity: Required, non-negative integer
-- Max Order Quantity: Optional, positive integer, default 999
+- Max Order Quantity: Optional, positive integer
 - Category: Required, 1-100 characters
 
 **Cart Item:**
 - Product ID: Required, must exist
 - Quantity: Required, positive integer, max 999
-- Quantity must not exceed product's max_order_quantity
-- Quantity must not exceed available stock
+- Must not exceed max_order_quantity if set
+- Must not exceed available stock
 
 ---
 
@@ -1054,106 +1096,78 @@ public class GlobalExceptionHandler {
 
 ### 12.1 Unit Tests
 
-**Service Layer Tests:**
-- Product service business logic
-- Cart service operations
-- Stock validation logic
-- Price calculation methods
-- Target coverage: 80%+
+#### 12.1.1 Cart Service Tests
 
-**Repository Tests:**
-- Custom query methods
-- Data persistence operations
-- Relationship mappings
+**Test Coverage:**
+- `testAddProductToCart_Success`
+- `testAddProductToCart_ProductNotFound`
+- `testAddProductToCart_InsufficientStock`
+- `testAddProductToCart_QuantityLimitExceeded`
+- `testUpdateCartItemQuantity_Success`
+- `testUpdateCartItemQuantity_ItemNotFound`
+- `testRemoveCartItem_Success`
+- `testClearCart_Success`
+- `testCalculateCartTotal_MultipleItems`
+- `testValidateStockAvailability_Success`
+- `testValidateStockAvailability_Failure`
+- `testEnforceQuantityLimits_WithinLimit`
+- `testEnforceQuantityLimits_ExceedsLimit`
+- `testValidatePriceConsistency_Success`
+- `testValidatePriceConsistency_PriceMismatch`
+
+#### 12.1.2 Cart API Tests
+
+**Test Coverage:**
+- `testAddToCart_ValidRequest_Returns201`
+- `testAddToCart_InvalidProductId_Returns404`
+- `testAddToCart_InsufficientStock_Returns400`
+- `testGetCart_ReturnsCartDetails_Returns200`
+- `testUpdateCartItem_ValidRequest_Returns200`
+- `testUpdateCartItem_InvalidItemId_Returns404`
+- `testRemoveFromCart_ValidRequest_Returns204`
+- `testRemoveFromCart_InvalidItemId_Returns404`
+- `testClearCart_Returns204`
+
+#### 12.1.3 Product Service Tests
+
+**Test Coverage:**
+- Service layer business logic
+- Repository custom queries
+- Utility methods
+- Stock validation logic
+- Quantity limit enforcement
 
 ### 12.2 Integration Tests
 
-**API Endpoint Tests:**
-- Product CRUD operations
-- Cart management workflows
-- Error handling scenarios
-- Authentication and authorization
+#### 12.2.1 Cart Checkout Flow Integration Test
 
-**Database Integration:**
-- Transaction management
-- Constraint validation
-- Cascade operations
+**Test Scenario:**
+1. Create test products
+2. Add multiple products to cart
+3. Update quantities
+4. Validate cart totals
+5. Remove items
+6. Clear cart
+7. Verify database state
 
-### 12.3 Cart-Specific Test Cases
+**Test Coverage:**
+- End-to-end cart workflow
+- Database transaction integrity
+- API endpoint integration
+- Session management
+- Guest to user cart migration
 
-**Cart Service Unit Tests:**
-```java
-@Test
-public void testAddItemToCart_Success() {
-    // Test successful item addition
-}
-
-@Test
-public void testAddItemToCart_InsufficientStock() {
-    // Test stock validation
-}
-
-@Test
-public void testUpdateQuantity_ExceedsMaxOrderQuantity() {
-    // Test max order quantity validation
-}
-
-@Test
-public void testRemoveItem_Success() {
-    // Test item removal
-}
-
-@Test
-public void testClearCart_Success() {
-    // Test cart clearing
-}
-
-@Test
-public void testCalculateTotal_MultipleItems() {
-    // Test total calculation with multiple items
-}
-```
-
-**Cart API Integration Tests:**
-```java
-@Test
-public void testCartCheckoutFlow_EndToEnd() {
-    // Test complete checkout workflow
-    // 1. Add items to cart
-    // 2. Update quantities
-    // 3. Remove items
-    // 4. Validate totals
-    // 5. Proceed to checkout
-}
-
-@Test
-public void testGuestCartMigration_OnLogin() {
-    // Test guest cart migration to user account
-}
-
-@Test
-public void testCartPersistence_AcrossSessions() {
-    // Test cart persistence for authenticated users
-}
-```
-
-### 12.4 Test Coverage Target
-
-**Coverage Goals:**
-- Overall code coverage: 85%
-- Service layer coverage: 90%
-- Controller layer coverage: 85%
-- Repository layer coverage: 80%
-- Critical path coverage: 100%
-
-### 12.5 Test Data Management
-
-**Test Data Strategy:**
-- Use H2 in-memory database for unit tests
+### 12.3 Test Data
+- Use H2 in-memory database for tests
 - Test data builders for object creation
 - Mockito for mocking dependencies
-- Test fixtures for common scenarios
-- Database seeding scripts for integration tests
+
+### 12.4 Coverage Target
+- Overall coverage target: **85%**
+- Critical path coverage: **95%**
+- Service layer coverage: **90%**
+- Controller layer coverage: **85%**
+- Repository layer coverage: **80%**
 
 ---
 
@@ -1176,9 +1190,20 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
+  session:
+    store-type: redis
+    redis:
+      namespace: ecommerce:session
   
 server:
   port: 8080
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        secure: true
+        http-only: true
+        same-site: strict
   
 logging:
   level:
@@ -1280,39 +1305,40 @@ logging:
    - Category-based filtering
    - Search functionality
    - Stock management
-   - Max order quantity enforcement
+   - Order quantity limits
 
 2. **Shopping Cart**
    - Add/remove items
    - Update quantities
    - Real-time total calculation
    - Stock validation
-   - Max order quantity validation
-   - Session persistence
-   - Guest and authenticated user support
+   - Quantity limit enforcement
+   - Price consistency validation
+   - Guest cart support
+   - Cart persistence for authenticated users
 
-3. **Presentation Layer**
-   - Responsive cart UI component
-   - Interactive quantity controls
-   - Real-time updates
-   - Mobile-optimized design
-
-4. **Data Integrity**
+3. **Data Integrity**
    - Foreign key constraints
    - Transaction management
    - Optimistic locking
 
-5. **API Design**
+4. **API Design**
    - RESTful principles
    - Consistent error handling
    - Comprehensive validation
    - Clear documentation
 
-6. **Testing**
-   - Comprehensive unit tests
-   - Integration test coverage
-   - Cart-specific test scenarios
-   - 85% overall coverage target
+5. **UI Components**
+   - Responsive cart interface
+   - Interactive quantity controls
+   - Real-time updates
+   - Accessible design
+
+6. **Session Management**
+   - Guest cart support
+   - User cart persistence
+   - Automatic cart migration
+   - Secure session handling
 
 ---
 
