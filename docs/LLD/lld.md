@@ -1,1560 +1,1752 @@
 # Low Level Design Document
-## Shopping Cart Feature
 
-### Document Information
-- **Version**: 2.0
-- **Last Updated**: 2024
-- **Status**: Updated with RCA Modifications
+## 1. Introduction
 
----
+### 1.1 Purpose
+This Low Level Design (LLD) document provides detailed technical specifications for the E-commerce Platform. It translates the High Level Design into implementable components, defining the internal structure, algorithms, and interactions of each module.
 
-## Table of Contents
-1. [Overview](#overview)
-2. [System Architecture](#system-architecture)
-3. [Backend Components](#backend-components)
-   - 3.1 [Shopping Cart Controller](#shopping-cart-controller)
-   - 3.2 [Shopping Cart Service](#shopping-cart-service)
-   - 3.3 [Data Models](#data-models)
-4. [Frontend Components](#frontend-components)
-   - 4.1 [Shopping Cart Component](#shopping-cart-component)
-   - 4.2 [Cart Item Component](#cart-item-component)
-5. [API Specifications](#api-specifications)
-6. [Validation Rules](#validation-rules)
-7. [Error Handling](#error-handling)
-8. [Security Considerations](#security-considerations)
-9. [Performance Optimization](#performance-optimization)
-10. [Testing Strategy](#testing-strategy)
+### 1.2 Scope
+This document covers:
+- Detailed class designs and relationships
+- Database schema specifications
+- API endpoint definitions
+- Algorithm implementations
+- Security implementations
+- Error handling mechanisms
 
----
+### 1.3 Definitions and Acronyms
+- **LLD**: Low Level Design
+- **HLD**: High Level Design
+- **API**: Application Programming Interface
+- **DTO**: Data Transfer Object
+- **DAO**: Data Access Object
+- **JWT**: JSON Web Token
+- **RBAC**: Role-Based Access Control
 
-## 1. Overview
+## 2. System Architecture Details
 
-This Low Level Design document describes the implementation details for the Shopping Cart Feature. The shopping cart allows users to add products, update quantities, remove items, and proceed to checkout.
+### 2.1 Technology Stack
 
-### Key Features
-- Add products to cart
-- Update item quantities
-- Remove items from cart
-- View cart summary with pricing
-- Empty cart management
-- Quantity validation against product limits
+#### Backend
+- **Framework**: Spring Boot 3.1.x
+- **Language**: Java 17
+- **Build Tool**: Maven 3.8+
+- **ORM**: Hibernate 6.x
+- **Security**: Spring Security 6.x
+- **API Documentation**: SpringDoc OpenAPI 3.x
 
----
+#### Frontend
+- **Framework**: React 18.x
+- **State Management**: Redux Toolkit
+- **UI Library**: Material-UI 5.x
+- **HTTP Client**: Axios
+- **Routing**: React Router 6.x
 
-## 2. System Architecture
+#### Database
+- **Primary**: PostgreSQL 15.x
+- **Cache**: Redis 7.x
+- **Search**: Elasticsearch 8.x
 
-```mermaid
-graph TB
-    subgraph Frontend
-        A[Shopping Cart Component]
-        B[Cart Item Component]
-        C[Empty Cart View]
-    end
-    
-    subgraph Backend
-        D[Shopping Cart Controller]
-        E[Shopping Cart Service]
-        F[Product Service]
-        G[Database]
-    end
-    
-    A --> D
-    B --> D
-    D --> E
-    E --> F
-    E --> G
+#### Infrastructure
+- **Containerization**: Docker
+- **Orchestration**: Kubernetes
+- **CI/CD**: Jenkins/GitHub Actions
+- **Monitoring**: Prometheus + Grafana
+- **Logging**: ELK Stack
+
+### 2.2 Project Structure
+
+```
+ecommerce-platform/
+├── backend/
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/
+│   │   │   │   └── com/
+│   │   │   │       └── ecommerce/
+│   │   │   │           ├── config/
+│   │   │   │           ├── controller/
+│   │   │   │           ├── service/
+│   │   │   │           ├── repository/
+│   │   │   │           ├── model/
+│   │   │   │           ├── dto/
+│   │   │   │           ├── exception/
+│   │   │   │           ├── security/
+│   │   │   │           └── util/
+│   │   │   └── resources/
+│   │   │       ├── application.yml
+│   │   │       └── db/
+│   │   │           └── migration/
+│   │   └── test/
+│   └── pom.xml
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── redux/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── App.js
+│   └── package.json
+└── docker-compose.yml
 ```
 
----
+## 3. Detailed Component Design
 
-## 3. Backend Components
+### 3.1 User Management Module
 
-### 3.1 Shopping Cart Controller
+#### 3.1.1 User Entity
 
-**File**: `controllers/shopping_cart_controller.py`
-
-**Responsibilities**:
-- Handle HTTP requests for cart operations
-- Validate request parameters
-- Coordinate with Shopping Cart Service
-- Return appropriate HTTP responses
-
-**Endpoints**:
-
-#### Add Item to Cart
-```python
-@router.post("/cart/items")
-async def add_item_to_cart(
-    product_id: int,
-    quantity: int,
-    user_id: int = Depends(get_current_user)
-):
-    """
-    Add an item to the shopping cart.
+```java
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
     
-    Validations:
-    - Product must exist
-    - Quantity must be positive
-    - Quantity must not exceed max_order_quantity
-    """
-    try:
-        # Validate product exists and get product details
-        product = await product_service.get_product(product_id)
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
+    @Column(unique = true, nullable = false)
+    private String email;
+    
+    @Column(nullable = false)
+    private String password;
+    
+    @Column(nullable = false)
+    private String firstName;
+    
+    @Column(nullable = false)
+    private String lastName;
+    
+    @Column(unique = true)
+    private String phoneNumber;
+    
+    @Enumerated(EnumType.STRING)
+    private UserRole role;
+    
+    @Enumerated(EnumType.STRING)
+    private UserStatus status;
+    
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
+    private List<Address> addresses;
+    
+    @OneToMany(mappedBy = "user")
+    private List<Order> orders;
+    
+    @CreatedDate
+    private LocalDateTime createdAt;
+    
+    @LastModifiedDate
+    private LocalDateTime updatedAt;
+}
+```
+
+#### 3.1.2 User Repository
+
+```java
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+    Optional<User> findByPhoneNumber(String phoneNumber);
+    boolean existsByEmail(String email);
+    List<User> findByRole(UserRole role);
+    
+    @Query("SELECT u FROM User u WHERE u.status = :status AND u.createdAt > :date")
+    List<User> findRecentActiveUsers(@Param("status") UserStatus status, 
+                                      @Param("date") LocalDateTime date);
+}
+```
+
+#### 3.1.3 User Service
+
+```java
+@Service
+@Transactional
+public class UserService {
+    
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
+    
+    public UserDTO registerUser(UserRegistrationDTO registrationDTO) {
+        // Validate input
+        validateRegistrationData(registrationDTO);
         
-        # Validate quantity against max_order_quantity
-        if quantity > product.max_order_quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Quantity exceeds maximum order quantity of {product.max_order_quantity}"
-            )
-        
-        # Add item to cart
-        cart_item = await shopping_cart_service.add_item(
-            user_id=user_id,
-            product_id=product_id,
-            quantity=quantity
-        )
-        
-        return {
-            "status": "success",
-            "data": cart_item,
-            "message": "Item added to cart successfully"
+        // Check if user exists
+        if (userRepository.existsByEmail(registrationDTO.getEmail())) {
+            throw new UserAlreadyExistsException("Email already registered");
         }
-    except Exception as e:
-        logger.error(f"Error adding item to cart: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-```
-
-#### Update Cart Item Quantity
-```python
-@router.put("/cart/items/{cart_item_id}")
-async def update_cart_item_quantity(
-    cart_item_id: int,
-    quantity: int,
-    user_id: int = Depends(get_current_user)
-):
-    """
-    Update the quantity of a cart item.
+        
+        // Create user entity
+        User user = new User();
+        user.setEmail(registrationDTO.getEmail());
+        user.setPassword(passwordEncoder.encode(registrationDTO.getPassword()));
+        user.setFirstName(registrationDTO.getFirstName());
+        user.setLastName(registrationDTO.getLastName());
+        user.setRole(UserRole.CUSTOMER);
+        user.setStatus(UserStatus.ACTIVE);
+        
+        // Save user
+        User savedUser = userRepository.save(user);
+        
+        // Send welcome email
+        emailService.sendWelcomeEmail(savedUser.getEmail());
+        
+        return convertToDTO(savedUser);
+    }
     
-    **MODIFICATION APPLIED**: Added validation to enforce max_order_quantity on update operations.
+    public UserDTO getUserById(Long id) {
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> new UserNotFoundException("User not found"));
+        return convertToDTO(user);
+    }
     
-    Validations:
-    - Cart item must exist and belong to user
-    - Quantity must be positive
-    - **NEW**: Quantity must not exceed product's max_order_quantity
-    
-    Reason: Story requires enforcement for all cart operations, not just add.
-    """
-    try:
-        # Get cart item and validate ownership
-        cart_item = await shopping_cart_service.get_cart_item(cart_item_id, user_id)
-        if not cart_item:
-            raise HTTPException(status_code=404, detail="Cart item not found")
+    public UserDTO updateUser(Long id, UserUpdateDTO updateDTO) {
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> new UserNotFoundException("User not found"));
         
-        # **MODIFICATION**: Get product details to validate max_order_quantity
-        product = await product_service.get_product(cart_item.product_id)
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-        
-        # **MODIFICATION**: Validate updated quantity against max_order_quantity
-        if quantity > product.max_order_quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Quantity exceeds maximum order quantity of {product.max_order_quantity}"
-            )
-        
-        # Validate quantity is positive
-        if quantity <= 0:
-            raise HTTPException(status_code=400, detail="Quantity must be positive")
-        
-        # Update cart item quantity
-        updated_item = await shopping_cart_service.update_item_quantity(
-            cart_item_id=cart_item_id,
-            user_id=user_id,
-            quantity=quantity
-        )
-        
-        return {
-            "status": "success",
-            "data": updated_item,
-            "message": "Cart item updated successfully"
+        // Update fields
+        if (updateDTO.getFirstName() != null) {
+            user.setFirstName(updateDTO.getFirstName());
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating cart item: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-```
-
-#### Remove Item from Cart
-```python
-@router.delete("/cart/items/{cart_item_id}")
-async def remove_item_from_cart(
-    cart_item_id: int,
-    user_id: int = Depends(get_current_user)
-):
-    """
-    Remove an item from the shopping cart.
-    """
-    try:
-        await shopping_cart_service.remove_item(
-            cart_item_id=cart_item_id,
-            user_id=user_id
-        )
-        
-        return {
-            "status": "success",
-            "message": "Item removed from cart successfully"
+        if (updateDTO.getLastName() != null) {
+            user.setLastName(updateDTO.getLastName());
         }
-    except Exception as e:
-        logger.error(f"Error removing item from cart: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-```
-
-#### Get Cart
-```python
-@router.get("/cart")
-async def get_cart(user_id: int = Depends(get_current_user)):
-    """
-    Retrieve the user's shopping cart with all items and totals.
-    """
-    try:
-        cart = await shopping_cart_service.get_cart(user_id)
-        return {
-            "status": "success",
-            "data": cart
+        if (updateDTO.getPhoneNumber() != null) {
+            user.setPhoneNumber(updateDTO.getPhoneNumber());
         }
-    except Exception as e:
-        logger.error(f"Error retrieving cart: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-```
-
----
-
-### 3.2 Shopping Cart Service
-
-**File**: `services/shopping_cart_service.py`
-
-**Responsibilities**:
-- Business logic for cart operations
-- Data persistence
-- Cart calculations (subtotal, total)
-- Inventory validation
-
-**Implementation**:
-
-```python
-class ShoppingCartService:
-    def __init__(self, db_session, product_service):
-        self.db = db_session
-        self.product_service = product_service
+        
+        User updatedUser = userRepository.save(user);
+        return convertToDTO(updatedUser);
+    }
     
-    async def add_item(self, user_id: int, product_id: int, quantity: int):
-        """
-        Add an item to the user's cart or update quantity if already exists.
-        
-        **MODIFICATION APPLIED**: Automatic recalculation logic added.
-        """
-        # Check if item already exists in cart
-        existing_item = await self.db.query(CartItem).filter(
-            CartItem.user_id == user_id,
-            CartItem.product_id == product_id
-        ).first()
-        
-        if existing_item:
-            # Update quantity
-            existing_item.quantity += quantity
-            existing_item.updated_at = datetime.utcnow()
-            await self.db.commit()
-            cart_item = existing_item
-        else:
-            # Create new cart item
-            cart_item = CartItem(
-                user_id=user_id,
-                product_id=product_id,
-                quantity=quantity,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            self.db.add(cart_item)
-            await self.db.commit()
-        
-        # **MODIFICATION**: Mandate recalculation on every mutation
-        await self._recalculate_cart_totals(user_id)
-        
-        return await self._enrich_cart_item(cart_item)
-    
-    async def update_item_quantity(self, cart_item_id: int, user_id: int, quantity: int):
-        """
-        Update the quantity of a specific cart item.
-        
-        **MODIFICATION APPLIED**: Automatic recalculation logic added.
-        """
-        cart_item = await self.db.query(CartItem).filter(
-            CartItem.id == cart_item_id,
-            CartItem.user_id == user_id
-        ).first()
-        
-        if not cart_item:
-            raise ValueError("Cart item not found")
-        
-        cart_item.quantity = quantity
-        cart_item.updated_at = datetime.utcnow()
-        await self.db.commit()
-        
-        # **MODIFICATION**: Mandate recalculation on every mutation for business correctness
-        await self._recalculate_cart_totals(user_id)
-        
-        return await self._enrich_cart_item(cart_item)
-    
-    async def remove_item(self, cart_item_id: int, user_id: int):
-        """
-        Remove an item from the cart.
-        
-        **MODIFICATION APPLIED**: Automatic recalculation logic added.
-        """
-        cart_item = await self.db.query(CartItem).filter(
-            CartItem.id == cart_item_id,
-            CartItem.user_id == user_id
-        ).first()
-        
-        if not cart_item:
-            raise ValueError("Cart item not found")
-        
-        await self.db.delete(cart_item)
-        await self.db.commit()
-        
-        # **MODIFICATION**: Mandate recalculation on every mutation
-        await self._recalculate_cart_totals(user_id)
-    
-    async def get_cart(self, user_id: int):
-        """
-        Retrieve the complete cart for a user with all items and totals.
-        """
-        cart_items = await self.db.query(CartItem).filter(
-            CartItem.user_id == user_id
-        ).all()
-        
-        enriched_items = []
-        for item in cart_items:
-            enriched_items.append(await self._enrich_cart_item(item))
-        
-        # Calculate totals
-        subtotal = sum(item['subtotal'] for item in enriched_items)
-        tax = subtotal * 0.1  # 10% tax
-        total = subtotal + tax
-        
-        return {
-            "items": enriched_items,
-            "subtotal": round(subtotal, 2),
-            "tax": round(tax, 2),
-            "total": round(total, 2),
-            "item_count": len(enriched_items)
+    private void validateRegistrationData(UserRegistrationDTO dto) {
+        if (!EmailValidator.isValid(dto.getEmail())) {
+            throw new InvalidInputException("Invalid email format");
         }
-    
-    async def get_cart_item(self, cart_item_id: int, user_id: int):
-        """
-        Retrieve a specific cart item.
-        """
-        cart_item = await self.db.query(CartItem).filter(
-            CartItem.id == cart_item_id,
-            CartItem.user_id == user_id
-        ).first()
-        
-        return cart_item
-    
-    async def _enrich_cart_item(self, cart_item):
-        """
-        Enrich cart item with product details and calculated values.
-        """
-        product = await self.product_service.get_product(cart_item.product_id)
-        
-        return {
-            "id": cart_item.id,
-            "product_id": cart_item.product_id,
-            "product_name": product.name,
-            "product_price": product.price,
-            "max_order_quantity": product.max_order_quantity,
-            "quantity": cart_item.quantity,
-            "subtotal": round(product.price * cart_item.quantity, 2),
-            "created_at": cart_item.created_at.isoformat(),
-            "updated_at": cart_item.updated_at.isoformat()
+        if (!PasswordValidator.isStrong(dto.getPassword())) {
+            throw new InvalidInputException("Password does not meet requirements");
         }
+    }
     
-    async def _recalculate_cart_totals(self, user_id: int):
-        """
-        **NEW METHOD ADDED**: Explicit logic for recalculation of subtotal and total.
-        
-        This method is called whenever cart item quantity changes to ensure
-        business correctness. It recalculates:
-        - Item subtotals (price * quantity)
-        - Cart subtotal (sum of all item subtotals)
-        - Tax amount
-        - Total amount
-        
-        This mandatory recalculation ensures data consistency and prevents
-        stale pricing information.
-        """
-        cart_items = await self.db.query(CartItem).filter(
-            CartItem.user_id == user_id
-        ).all()
-        
-        subtotal = 0
-        for item in cart_items:
-            product = await self.product_service.get_product(item.product_id)
-            item_subtotal = product.price * item.quantity
-            subtotal += item_subtotal
-        
-        # Calculate tax and total
-        tax = subtotal * 0.1  # 10% tax rate
-        total = subtotal + tax
-        
-        # Update or create cart summary record
-        cart_summary = await self.db.query(CartSummary).filter(
-            CartSummary.user_id == user_id
-        ).first()
-        
-        if cart_summary:
-            cart_summary.subtotal = round(subtotal, 2)
-            cart_summary.tax = round(tax, 2)
-            cart_summary.total = round(total, 2)
-            cart_summary.updated_at = datetime.utcnow()
-        else:
-            cart_summary = CartSummary(
-                user_id=user_id,
-                subtotal=round(subtotal, 2),
-                tax=round(tax, 2),
-                total=round(total, 2),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            self.db.add(cart_summary)
-        
-        await self.db.commit()
-        
-        return {
-            "subtotal": round(subtotal, 2),
-            "tax": round(tax, 2),
-            "total": round(total, 2)
+    private UserDTO convertToDTO(User user) {
+        return UserDTO.builder()
+            .id(user.getId())
+            .email(user.getEmail())
+            .firstName(user.getFirstName())
+            .lastName(user.getLastName())
+            .phoneNumber(user.getPhoneNumber())
+            .role(user.getRole())
+            .status(user.getStatus())
+            .build();
+    }
+}
+```
+
+#### 3.1.4 User Controller
+
+```java
+@RestController
+@RequestMapping("/api/v1/users")
+@RequiredArgsConstructor
+public class UserController {
+    
+    private final UserService userService;
+    
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<UserDTO>> registerUser(
+            @Valid @RequestBody UserRegistrationDTO registrationDTO) {
+        UserDTO user = userService.registerUser(registrationDTO);
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.success(user, "User registered successfully"));
+    }
+    
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<UserDTO>> getUserById(@PathVariable Long id) {
+        UserDTO user = userService.getUserById(id);
+        return ResponseEntity.ok(ApiResponse.success(user));
+    }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<UserDTO>> updateUser(
+            @PathVariable Long id,
+            @Valid @RequestBody UserUpdateDTO updateDTO) {
+        UserDTO user = userService.updateUser(id, updateDTO);
+        return ResponseEntity.ok(ApiResponse.success(user, "User updated successfully"));
+    }
+    
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable Long id) {
+        userService.deleteUser(id);
+        return ResponseEntity.ok(ApiResponse.success(null, "User deleted successfully"));
+    }
+}
+```
+
+### 3.2 Product Management Module
+
+#### 3.2.1 Product Entity
+
+```java
+@Entity
+@Table(name = "products")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Product {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false)
+    private String name;
+    
+    @Column(length = 2000)
+    private String description;
+    
+    @Column(nullable = false)
+    private BigDecimal price;
+    
+    @Column(nullable = false)
+    private Integer stockQuantity;
+    
+    private String sku;
+    
+    @ManyToOne
+    @JoinColumn(name = "category_id")
+    private Category category;
+    
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL)
+    private List<ProductImage> images;
+    
+    @OneToMany(mappedBy = "product")
+    private List<Review> reviews;
+    
+    @Column(nullable = false)
+    private Boolean active = true;
+    
+    @CreatedDate
+    private LocalDateTime createdAt;
+    
+    @LastModifiedDate
+    private LocalDateTime updatedAt;
+    
+    @Transient
+    public Double getAverageRating() {
+        if (reviews == null || reviews.isEmpty()) {
+            return 0.0;
         }
-```
-
----
-
-### 3.3 Data Models
-
-**File**: `models/cart_models.py`
-
-```python
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
-from database import Base
-
-class CartItem(Base):
-    __tablename__ = "cart_items"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    quantity = Column(Integer, nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
-    
-    # Relationships
-    user = relationship("User", back_populates="cart_items")
-    product = relationship("Product")
-
-class CartSummary(Base):
-    __tablename__ = "cart_summaries"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    subtotal = Column(Float, nullable=False, default=0.0)
-    tax = Column(Float, nullable=False, default=0.0)
-    total = Column(Float, nullable=False, default=0.0)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
-    
-    # Relationships
-    user = relationship("User", back_populates="cart_summary")
-
-class Product(Base):
-    __tablename__ = "products"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    description = Column(String)
-    price = Column(Float, nullable=False)
-    max_order_quantity = Column(Integer, nullable=False, default=10)
-    stock_quantity = Column(Integer, nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
-```
-
----
-
-## 4. Frontend Components
-
-### 4.1 Shopping Cart Component
-
-**File**: `components/ShoppingCart.jsx`
-
-**Responsibilities**:
-- Display cart items
-- Show cart summary (subtotal, tax, total)
-- Handle empty cart state
-- Coordinate checkout process
-
-**Implementation**:
-
-```jsx
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import CartItem from './CartItem';
-import { getCart } from '../services/cartService';
-import './ShoppingCart.css';
-
-const ShoppingCart = () => {
-  const [cart, setCart] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    loadCart();
-  }, []);
-
-  const loadCart = async () => {
-    try {
-      setLoading(true);
-      const response = await getCart();
-      setCart(response.data);
-      setError(null);
-    } catch (err) {
-      setError('Failed to load cart');
-      console.error('Error loading cart:', err);
-    } finally {
-      setLoading(false);
+        return reviews.stream()
+            .mapToInt(Review::getRating)
+            .average()
+            .orElse(0.0);
     }
-  };
+}
+```
 
-  const handleItemUpdate = () => {
-    // Reload cart after item update
-    loadCart();
-  };
+#### 3.2.2 Product Service
 
-  const handleCheckout = () => {
-    navigate('/checkout');
-  };
-
-  if (loading) {
-    return <div className="cart-loading">Loading cart...</div>;
-  }
-
-  if (error) {
-    return <div className="cart-error">{error}</div>;
-  }
-
-  // **MODIFICATION APPLIED**: Empty Cart View with Redirection Link
-  if (!cart || cart.items.length === 0) {
-    return (
-      <div className="empty-cart">
-        <div className="empty-cart-icon">
-          <i className="fas fa-shopping-cart"></i>
-        </div>
-        <h2>Your cart is empty</h2>
-        <p>Add some items to get started!</p>
-        {/* **NEW**: Explicit UI redirection link to 'continue shopping' */}
-        {/* Required by story acceptance criteria */}
-        <button 
-          className="continue-shopping-btn"
-          onClick={() => navigate('/products')}
-        >
-          Continue Shopping
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="shopping-cart">
-      <h1>Shopping Cart</h1>
-      
-      <div className="cart-content">
-        <div className="cart-items">
-          {cart.items.map(item => (
-            <CartItem
-              key={item.id}
-              item={item}
-              onUpdate={handleItemUpdate}
-            />
-          ))}
-        </div>
+```java
+@Service
+@Transactional
+public class ProductService {
+    
+    private final ProductRepository productRepository;
+    private final CategoryRepository categoryRepository;
+    private final ElasticsearchService elasticsearchService;
+    private final CacheManager cacheManager;
+    
+    @Cacheable(value = "products", key = "#id")
+    public ProductDTO getProductById(Long id) {
+        Product product = productRepository.findById(id)
+            .orElseThrow(() -> new ProductNotFoundException("Product not found"));
+        return convertToDTO(product);
+    }
+    
+    public Page<ProductDTO> searchProducts(ProductSearchCriteria criteria, Pageable pageable) {
+        // Use Elasticsearch for full-text search
+        if (criteria.hasSearchQuery()) {
+            return elasticsearchService.searchProducts(criteria, pageable);
+        }
         
-        <div className="cart-summary">
-          <h2>Order Summary</h2>
-          
-          <div className="summary-row">
-            <span>Subtotal ({cart.item_count} items):</span>
-            <span>${cart.subtotal.toFixed(2)}</span>
-          </div>
-          
-          <div className="summary-row">
-            <span>Tax:</span>
-            <span>${cart.tax.toFixed(2)}</span>
-          </div>
-          
-          <div className="summary-row total">
-            <span>Total:</span>
-            <span>${cart.total.toFixed(2)}</span>
-          </div>
-          
-          <button 
-            className="checkout-btn"
-            onClick={handleCheckout}
-          >
-            Proceed to Checkout
-          </button>
-          
-          <button 
-            className="continue-shopping-link"
-            onClick={() => navigate('/products')}
-          >
-            Continue Shopping
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default ShoppingCart;
-```
-
-**Styles** (`ShoppingCart.css`):
-
-```css
-.shopping-cart {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-.cart-content {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 30px;
-  margin-top: 20px;
-}
-
-.cart-items {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.cart-summary {
-  background: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  height: fit-content;
-  position: sticky;
-  top: 20px;
-}
-
-.summary-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.summary-row.total {
-  font-weight: bold;
-  font-size: 1.2em;
-  border-bottom: none;
-  margin-top: 10px;
-}
-
-.checkout-btn {
-  width: 100%;
-  padding: 15px;
-  background: #28a745;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  font-size: 1.1em;
-  cursor: pointer;
-  margin-top: 20px;
-}
-
-.checkout-btn:hover {
-  background: #218838;
-}
-
-.continue-shopping-link {
-  width: 100%;
-  padding: 10px;
-  background: transparent;
-  color: #007bff;
-  border: 1px solid #007bff;
-  border-radius: 5px;
-  cursor: pointer;
-  margin-top: 10px;
-}
-
-.continue-shopping-link:hover {
-  background: #007bff;
-  color: white;
-}
-
-/* **MODIFICATION**: Empty cart view styles */
-.empty-cart {
-  text-align: center;
-  padding: 60px 20px;
-  max-width: 500px;
-  margin: 0 auto;
-}
-
-.empty-cart-icon {
-  font-size: 80px;
-  color: #dee2e6;
-  margin-bottom: 20px;
-}
-
-.empty-cart h2 {
-  color: #495057;
-  margin-bottom: 10px;
-}
-
-.empty-cart p {
-  color: #6c757d;
-  margin-bottom: 30px;
-}
-
-/* **NEW**: Continue shopping button in empty cart view */
-.continue-shopping-btn {
-  padding: 12px 30px;
-  background: #007bff;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  font-size: 1em;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.continue-shopping-btn:hover {
-  background: #0056b3;
-}
-
-.cart-loading,
-.cart-error {
-  text-align: center;
-  padding: 40px;
-  font-size: 1.2em;
-}
-
-.cart-error {
-  color: #dc3545;
-}
-
-@media (max-width: 768px) {
-  .cart-content {
-    grid-template-columns: 1fr;
-  }
-  
-  .cart-summary {
-    position: static;
-  }
-}
-```
-
----
-
-### 4.2 Cart Item Component
-
-**File**: `components/CartItem.jsx`
-
-**Responsibilities**:
-- Display individual cart item details
-- Handle quantity updates
-- Handle item removal
-- Show item subtotal
-
-**Implementation**:
-
-```jsx
-import React, { useState } from 'react';
-import { updateCartItemQuantity, removeCartItem } from '../services/cartService';
-import './CartItem.css';
-
-const CartItem = ({ item, onUpdate }) => {
-  const [quantity, setQuantity] = useState(item.quantity);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  /**
-   * **MODIFICATION APPLIED**: UI validation and alert to prevent quantity 
-   * exceeding max_order_quantity
-   */
-  const handleQuantityChange = async (newQuantity) => {
-    // Validate quantity is positive
-    if (newQuantity < 1) {
-      setError('Quantity must be at least 1');
-      return;
+        // Use database for filtered queries
+        Specification<Product> spec = ProductSpecification.withCriteria(criteria);
+        Page<Product> products = productRepository.findAll(spec, pageable);
+        return products.map(this::convertToDTO);
     }
-
-    // **NEW**: Validate against max_order_quantity with appropriate error message
-    if (newQuantity > item.max_order_quantity) {
-      setError(
-        `Quantity cannot exceed maximum order quantity of ${item.max_order_quantity}`
-      );
-      // **NEW**: Display alert to user
-      alert(
-        `Cannot add more than ${item.max_order_quantity} units of this product. ` +
-        `Maximum order quantity limit reached.`
-      );
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      
-      await updateCartItemQuantity(item.id, newQuantity);
-      setQuantity(newQuantity);
-      
-      // Notify parent component to refresh cart
-      if (onUpdate) {
-        onUpdate();
-      }
-    } catch (err) {
-      setError('Failed to update quantity');
-      console.error('Error updating quantity:', err);
-      
-      // **NEW**: Show error alert if backend validation fails
-      if (err.response && err.response.status === 400) {
-        alert(err.response.data.detail || 'Failed to update quantity');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRemove = async () => {
-    if (!window.confirm('Are you sure you want to remove this item?')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await removeCartItem(item.id);
-      
-      // Notify parent component to refresh cart
-      if (onUpdate) {
-        onUpdate();
-      }
-    } catch (err) {
-      setError('Failed to remove item');
-      console.error('Error removing item:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const incrementQuantity = () => {
-    handleQuantityChange(quantity + 1);
-  };
-
-  const decrementQuantity = () => {
-    if (quantity > 1) {
-      handleQuantityChange(quantity - 1);
-    }
-  };
-
-  const handleInputChange = (e) => {
-    const value = parseInt(e.target.value, 10);
-    if (!isNaN(value)) {
-      handleQuantityChange(value);
-    }
-  };
-
-  return (
-    <div className="cart-item">
-      <div className="item-image">
-        <img 
-          src={item.product_image || '/placeholder.png'} 
-          alt={item.product_name}
-        />
-      </div>
-      
-      <div className="item-details">
-        <h3>{item.product_name}</h3>
-        <p className="item-price">${item.product_price.toFixed(2)}</p>
-        {/* **NEW**: Display max order quantity information */}
-        <p className="item-limit">Max order quantity: {item.max_order_quantity}</p>
-      </div>
-      
-      <div className="item-quantity">
-        <label>Quantity:</label>
-        <div className="quantity-controls">
-          <button 
-            onClick={decrementQuantity}
-            disabled={loading || quantity <= 1}
-            className="qty-btn"
-          >
-            -
-          </button>
-          
-          <input
-            type="number"
-            value={quantity}
-            onChange={handleInputChange}
-            min="1"
-            max={item.max_order_quantity}
-            disabled={loading}
-            className="qty-input"
-          />
-          
-          <button 
-            onClick={incrementQuantity}
-            disabled={loading || quantity >= item.max_order_quantity}
-            className="qty-btn"
-          >
-            +
-          </button>
-        </div>
-        {/* **NEW**: Display error message for quantity validation */}
-        {error && <p className="error-message">{error}</p>}
-      </div>
-      
-      <div className="item-subtotal">
-        <p>Subtotal:</p>
-        <p className="subtotal-amount">${item.subtotal.toFixed(2)}</p>
-      </div>
-      
-      <div className="item-actions">
-        <button 
-          onClick={handleRemove}
-          disabled={loading}
-          className="remove-btn"
-        >
-          {loading ? 'Removing...' : 'Remove'}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export default CartItem;
-```
-
-**Styles** (`CartItem.css`):
-
-```css
-.cart-item {
-  display: grid;
-  grid-template-columns: 100px 2fr 1fr 1fr auto;
-  gap: 20px;
-  align-items: center;
-  padding: 20px;
-  background: white;
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-}
-
-.item-image img {
-  width: 100%;
-  height: 100px;
-  object-fit: cover;
-  border-radius: 5px;
-}
-
-.item-details h3 {
-  margin: 0 0 10px 0;
-  font-size: 1.1em;
-}
-
-.item-price {
-  color: #28a745;
-  font-weight: bold;
-  font-size: 1.1em;
-  margin: 5px 0;
-}
-
-/* **NEW**: Style for max order quantity display */
-.item-limit {
-  color: #6c757d;
-  font-size: 0.9em;
-  margin: 5px 0;
-}
-
-.item-quantity label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: 500;
-}
-
-.quantity-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.qty-btn {
-  width: 30px;
-  height: 30px;
-  border: 1px solid #dee2e6;
-  background: white;
-  cursor: pointer;
-  border-radius: 3px;
-  font-size: 1.2em;
-}
-
-.qty-btn:hover:not(:disabled) {
-  background: #f8f9fa;
-}
-
-.qty-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.qty-input {
-  width: 60px;
-  height: 30px;
-  text-align: center;
-  border: 1px solid #dee2e6;
-  border-radius: 3px;
-}
-
-/* **NEW**: Error message styling for quantity validation */
-.error-message {
-  color: #dc3545;
-  font-size: 0.85em;
-  margin-top: 5px;
-}
-
-.item-subtotal {
-  text-align: right;
-}
-
-.subtotal-amount {
-  font-weight: bold;
-  font-size: 1.2em;
-  color: #212529;
-}
-
-.remove-btn {
-  padding: 8px 16px;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-.remove-btn:hover:not(:disabled) {
-  background: #c82333;
-}
-
-.remove-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-@media (max-width: 768px) {
-  .cart-item {
-    grid-template-columns: 1fr;
-    gap: 15px;
-  }
-  
-  .item-image {
-    text-align: center;
-  }
-  
-  .item-subtotal,
-  .item-actions {
-    text-align: center;
-  }
-}
-```
-
----
-
-## 5. API Specifications
-
-### Base URL
-```
-https://api.example.com/v1
-```
-
-### Authentication
-All endpoints require Bearer token authentication:
-```
-Authorization: Bearer <token>
-```
-
-### Endpoints
-
-#### 1. Add Item to Cart
-**POST** `/cart/items`
-
-**Request Body**:
-```json
-{
-  "product_id": 123,
-  "quantity": 2
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "status": "success",
-  "data": {
-    "id": 456,
-    "product_id": 123,
-    "product_name": "Product Name",
-    "product_price": 29.99,
-    "max_order_quantity": 10,
-    "quantity": 2,
-    "subtotal": 59.98,
-    "created_at": "2024-01-15T10:30:00Z",
-    "updated_at": "2024-01-15T10:30:00Z"
-  },
-  "message": "Item added to cart successfully"
-}
-```
-
-**Error Response** (400 Bad Request):
-```json
-{
-  "detail": "Quantity exceeds maximum order quantity of 10"
-}
-```
-
-#### 2. Update Cart Item Quantity
-**PUT** `/cart/items/{cart_item_id}`
-
-**Request Body**:
-```json
-{
-  "quantity": 3
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "status": "success",
-  "data": {
-    "id": 456,
-    "product_id": 123,
-    "product_name": "Product Name",
-    "product_price": 29.99,
-    "max_order_quantity": 10,
-    "quantity": 3,
-    "subtotal": 89.97,
-    "created_at": "2024-01-15T10:30:00Z",
-    "updated_at": "2024-01-15T10:35:00Z"
-  },
-  "message": "Cart item updated successfully"
-}
-```
-
-**Error Response** (400 Bad Request):
-```json
-{
-  "detail": "Quantity exceeds maximum order quantity of 10"
-}
-```
-
-#### 3. Remove Item from Cart
-**DELETE** `/cart/items/{cart_item_id}`
-
-**Response** (200 OK):
-```json
-{
-  "status": "success",
-  "message": "Item removed from cart successfully"
-}
-```
-
-#### 4. Get Cart
-**GET** `/cart`
-
-**Response** (200 OK):
-```json
-{
-  "status": "success",
-  "data": {
-    "items": [
-      {
-        "id": 456,
-        "product_id": 123,
-        "product_name": "Product Name",
-        "product_price": 29.99,
-        "max_order_quantity": 10,
-        "quantity": 3,
-        "subtotal": 89.97,
-        "created_at": "2024-01-15T10:30:00Z",
-        "updated_at": "2024-01-15T10:35:00Z"
-      }
-    ],
-    "subtotal": 89.97,
-    "tax": 8.99,
-    "total": 98.96,
-    "item_count": 1
-  }
-}
-```
-
----
-
-## 6. Validation Rules
-
-### Product Validation
-1. Product must exist in the database
-2. Product must be active and available
-3. Product must have sufficient stock
-
-### Quantity Validation
-1. Quantity must be a positive integer (> 0)
-2. **Quantity must not exceed product's `max_order_quantity`** (enforced on both add and update operations)
-3. Quantity must not exceed available stock
-4. Maximum quantity per cart item: defined by product's `max_order_quantity`
-
-### Cart Validation
-1. User must be authenticated
-2. Cart item must belong to the authenticated user
-3. Cart cannot exceed maximum number of unique items (e.g., 50 items)
-
-### Price Validation
-1. Prices must be calculated server-side
-2. Client-submitted prices are ignored
-3. Tax rates are applied based on user location
-
----
-
-## 7. Error Handling
-
-### Error Response Format
-```json
-{
-  "detail": "Error message",
-  "error_code": "ERROR_CODE",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
-
-### Common Error Codes
-
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| PRODUCT_NOT_FOUND | 404 | Product does not exist |
-| CART_ITEM_NOT_FOUND | 404 | Cart item does not exist |
-| INVALID_QUANTITY | 400 | Quantity is invalid or out of range |
-| MAX_QUANTITY_EXCEEDED | 400 | Quantity exceeds max_order_quantity |
-| INSUFFICIENT_STOCK | 400 | Not enough stock available |
-| UNAUTHORIZED | 401 | User not authenticated |
-| FORBIDDEN | 403 | User not authorized for this cart |
-| INTERNAL_ERROR | 500 | Server error |
-
-### Frontend Error Handling
-
-```javascript
-try {
-  await updateCartItemQuantity(itemId, quantity);
-} catch (error) {
-  if (error.response) {
-    // Server responded with error
-    switch (error.response.status) {
-      case 400:
-        // Validation error - show to user
-        alert(error.response.data.detail);
-        break;
-      case 404:
-        // Not found - redirect or show message
-        console.error('Item not found');
-        break;
-      case 500:
-        // Server error - show generic message
-        alert('Something went wrong. Please try again.');
-        break;
-      default:
-        alert('An error occurred');
-    }
-  } else {
-    // Network error
-    alert('Network error. Please check your connection.');
-  }
-}
-```
-
----
-
-## 8. Security Considerations
-
-### Authentication & Authorization
-1. All cart operations require valid JWT token
-2. Users can only access their own cart
-3. Cart item ownership validated on every operation
-
-### Input Validation
-1. All inputs sanitized to prevent SQL injection
-2. Quantity values validated as integers
-3. Product IDs validated against database
-
-### Rate Limiting
-1. Maximum 100 requests per minute per user
-2. Maximum 10 cart updates per minute
-
-### Data Privacy
-1. Cart data encrypted at rest
-2. Sensitive data not logged
-3. Cart data purged after 30 days of inactivity
-
----
-
-## 9. Performance Optimization
-
-### Database Optimization
-1. Indexes on `user_id` and `product_id` in `cart_items` table
-2. Composite index on `(user_id, product_id)` for faster lookups
-3. Database connection pooling
-
-### Caching Strategy
-1. Product details cached for 5 minutes
-2. Cart summary cached for 1 minute
-3. Redis used for session storage
-
-### API Optimization
-1. Batch operations for multiple item updates
-2. Pagination for large carts (if needed)
-3. Compression enabled for API responses
-
-### Frontend Optimization
-1. Debouncing on quantity input changes
-2. Optimistic UI updates
-3. Lazy loading of product images
-
----
-
-## 10. Testing Strategy
-
-### Unit Tests
-
-#### Backend Tests
-```python
-class TestShoppingCartService:
-    def test_add_item_success(self):
-        """Test successful item addition"""
-        pass
     
-    def test_add_item_exceeds_max_quantity(self):
-        """Test adding item with quantity exceeding max_order_quantity"""
-        pass
-    
-    def test_update_quantity_success(self):
-        """Test successful quantity update"""
-        pass
-    
-    def test_update_quantity_exceeds_max(self):
-        """Test updating quantity beyond max_order_quantity"""
-        pass
-    
-    def test_recalculation_on_quantity_change(self):
-        """Test automatic recalculation when quantity changes"""
-        pass
-    
-    def test_remove_item_success(self):
-        """Test successful item removal"""
-        pass
-```
-
-#### Frontend Tests
-```javascript
-describe('CartItem Component', () => {
-  test('displays product details correctly', () => {
-    // Test implementation
-  });
-  
-  test('prevents quantity exceeding max_order_quantity', () => {
-    // Test validation logic
-  });
-  
-  test('shows alert when max quantity exceeded', () => {
-    // Test alert display
-  });
-  
-  test('updates quantity successfully', () => {
-    // Test quantity update
-  });
-});
-
-describe('ShoppingCart Component', () => {
-  test('displays empty cart message with continue shopping link', () => {
-    // Test empty cart view
-  });
-  
-  test('displays cart items correctly', () => {
-    // Test cart display
-  });
-  
-  test('calculates totals correctly', () => {
-    // Test calculation logic
-  });
-});
-```
-
-### Integration Tests
-
-```python
-class TestCartAPIIntegration:
-    def test_add_and_update_cart_item_flow(self):
-        """Test complete flow of adding and updating cart item"""
-        # Add item
-        response = client.post('/cart/items', json={
-            'product_id': 1,
-            'quantity': 2
-        })
-        assert response.status_code == 200
+    @CacheEvict(value = "products", key = "#result.id")
+    public ProductDTO createProduct(ProductCreateDTO createDTO) {
+        // Validate category
+        Category category = categoryRepository.findById(createDTO.getCategoryId())
+            .orElseThrow(() -> new CategoryNotFoundException("Category not found"));
         
-        # Update quantity within limit
-        cart_item_id = response.json()['data']['id']
-        response = client.put(f'/cart/items/{cart_item_id}', json={
-            'quantity': 5
-        })
-        assert response.status_code == 200
+        // Create product
+        Product product = new Product();
+        product.setName(createDTO.getName());
+        product.setDescription(createDTO.getDescription());
+        product.setPrice(createDTO.getPrice());
+        product.setStockQuantity(createDTO.getStockQuantity());
+        product.setSku(generateSKU());
+        product.setCategory(category);
+        product.setActive(true);
         
-        # Try to exceed max_order_quantity
-        response = client.put(f'/cart/items/{cart_item_id}', json={
-            'quantity': 15  # Assuming max is 10
-        })
-        assert response.status_code == 400
-        assert 'maximum order quantity' in response.json()['detail'].lower()
+        Product savedProduct = productRepository.save(product);
+        
+        // Index in Elasticsearch
+        elasticsearchService.indexProduct(savedProduct);
+        
+        return convertToDTO(savedProduct);
+    }
+    
+    @CacheEvict(value = "products", key = "#id")
+    public ProductDTO updateProduct(Long id, ProductUpdateDTO updateDTO) {
+        Product product = productRepository.findById(id)
+            .orElseThrow(() -> new ProductNotFoundException("Product not found"));
+        
+        // Update fields
+        if (updateDTO.getName() != null) {
+            product.setName(updateDTO.getName());
+        }
+        if (updateDTO.getDescription() != null) {
+            product.setDescription(updateDTO.getDescription());
+        }
+        if (updateDTO.getPrice() != null) {
+            product.setPrice(updateDTO.getPrice());
+        }
+        if (updateDTO.getStockQuantity() != null) {
+            product.setStockQuantity(updateDTO.getStockQuantity());
+        }
+        
+        Product updatedProduct = productRepository.save(product);
+        
+        // Update Elasticsearch index
+        elasticsearchService.updateProduct(updatedProduct);
+        
+        return convertToDTO(updatedProduct);
+    }
+    
+    public void updateStock(Long productId, Integer quantity) {
+        Product product = productRepository.findById(productId)
+            .orElseThrow(() -> new ProductNotFoundException("Product not found"));
+        
+        int newQuantity = product.getStockQuantity() + quantity;
+        if (newQuantity < 0) {
+            throw new InsufficientStockException("Insufficient stock available");
+        }
+        
+        product.setStockQuantity(newQuantity);
+        productRepository.save(product);
+    }
+    
+    private String generateSKU() {
+        return "PRD-" + System.currentTimeMillis() + "-" + 
+               RandomStringUtils.randomAlphanumeric(6).toUpperCase();
+    }
+    
+    private ProductDTO convertToDTO(Product product) {
+        return ProductDTO.builder()
+            .id(product.getId())
+            .name(product.getName())
+            .description(product.getDescription())
+            .price(product.getPrice())
+            .stockQuantity(product.getStockQuantity())
+            .sku(product.getSku())
+            .categoryId(product.getCategory().getId())
+            .categoryName(product.getCategory().getName())
+            .averageRating(product.getAverageRating())
+            .active(product.getActive())
+            .build();
+    }
+}
 ```
 
-### End-to-End Tests
+### 3.3 Order Management Module
 
-```javascript
-describe('Shopping Cart E2E', () => {
-  test('complete cart workflow', async () => {
-    // Navigate to products
-    await page.goto('/products');
+#### 3.3.1 Order Entity
+
+```java
+@Entity
+@Table(name = "orders")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Order {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
     
-    // Add item to cart
-    await page.click('.add-to-cart-btn');
+    @Column(unique = true, nullable = false)
+    private String orderNumber;
     
-    // Navigate to cart
-    await page.goto('/cart');
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
     
-    // Verify item is in cart
-    expect(await page.textContent('.cart-item')).toContain('Product Name');
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderItem> orderItems = new ArrayList<>();
     
-    // Try to exceed max quantity
-    await page.fill('.qty-input', '15');
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
     
-    // Verify alert is shown
-    page.on('dialog', dialog => {
-      expect(dialog.message()).toContain('maximum order quantity');
-      dialog.accept();
-    });
-  });
-  
-  test('empty cart shows continue shopping link', async () => {
-    await page.goto('/cart');
+    @Column(nullable = false)
+    private BigDecimal subtotal;
     
-    // Verify empty cart message
-    expect(await page.textContent('.empty-cart')).toContain('Your cart is empty');
+    @Column(nullable = false)
+    private BigDecimal tax;
     
-    // Verify continue shopping button exists
-    const continueBtn = await page.$('.continue-shopping-btn');
-    expect(continueBtn).toBeTruthy();
+    @Column(nullable = false)
+    private BigDecimal shippingCost;
     
-    // Click and verify navigation
-    await continueBtn.click();
-    expect(page.url()).toContain('/products');
-  });
-});
+    @Column(nullable = false)
+    private BigDecimal totalAmount;
+    
+    @ManyToOne
+    @JoinColumn(name = "shipping_address_id")
+    private Address shippingAddress;
+    
+    @ManyToOne
+    @JoinColumn(name = "billing_address_id")
+    private Address billingAddress;
+    
+    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL)
+    private Payment payment;
+    
+    @CreatedDate
+    private LocalDateTime createdAt;
+    
+    @LastModifiedDate
+    private LocalDateTime updatedAt;
+    
+    private LocalDateTime deliveredAt;
+    
+    public void addOrderItem(OrderItem item) {
+        orderItems.add(item);
+        item.setOrder(this);
+    }
+    
+    public void calculateTotals() {
+        this.subtotal = orderItems.stream()
+            .map(OrderItem::getSubtotal)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        this.tax = subtotal.multiply(new BigDecimal("0.10")); // 10% tax
+        this.totalAmount = subtotal.add(tax).add(shippingCost);
+    }
+}
 ```
 
----
+#### 3.3.2 Order Service
 
-## Appendix A: Database Schema
+```java
+@Service
+@Transactional
+public class OrderService {
+    
+    private final OrderRepository orderRepository;
+    private final ProductService productService;
+    private final UserRepository userRepository;
+    private final PaymentService paymentService;
+    private final NotificationService notificationService;
+    
+    public OrderDTO createOrder(OrderCreateDTO createDTO, Long userId) {
+        // Validate user
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new UserNotFoundException("User not found"));
+        
+        // Create order
+        Order order = new Order();
+        order.setOrderNumber(generateOrderNumber());
+        order.setUser(user);
+        order.setStatus(OrderStatus.PENDING);
+        order.setShippingCost(calculateShippingCost(createDTO));
+        
+        // Add order items
+        for (OrderItemDTO itemDTO : createDTO.getItems()) {
+            ProductDTO product = productService.getProductById(itemDTO.getProductId());
+            
+            // Check stock availability
+            if (product.getStockQuantity() < itemDTO.getQuantity()) {
+                throw new InsufficientStockException(
+                    "Insufficient stock for product: " + product.getName());
+            }
+            
+            OrderItem orderItem = new OrderItem();
+            orderItem.setProduct(convertToEntity(product));
+            orderItem.setQuantity(itemDTO.getQuantity());
+            orderItem.setPrice(product.getPrice());
+            orderItem.setSubtotal(product.getPrice()
+                .multiply(new BigDecimal(itemDTO.getQuantity())));
+            
+            order.addOrderItem(orderItem);
+        }
+        
+        // Calculate totals
+        order.calculateTotals();
+        
+        // Set addresses
+        order.setShippingAddress(getAddress(createDTO.getShippingAddressId()));
+        order.setBillingAddress(getAddress(createDTO.getBillingAddressId()));
+        
+        // Save order
+        Order savedOrder = orderRepository.save(order);
+        
+        // Update product stock
+        for (OrderItem item : savedOrder.getOrderItems()) {
+            productService.updateStock(item.getProduct().getId(), -item.getQuantity());
+        }
+        
+        // Send order confirmation
+        notificationService.sendOrderConfirmation(savedOrder);
+        
+        return convertToDTO(savedOrder);
+    }
+    
+    public OrderDTO getOrderById(Long id, Long userId) {
+        Order order = orderRepository.findById(id)
+            .orElseThrow(() -> new OrderNotFoundException("Order not found"));
+        
+        // Verify order belongs to user
+        if (!order.getUser().getId().equals(userId)) {
+            throw new UnauthorizedAccessException("Access denied");
+        }
+        
+        return convertToDTO(order);
+    }
+    
+    public List<OrderDTO> getUserOrders(Long userId, Pageable pageable) {
+        Page<Order> orders = orderRepository.findByUserId(userId, pageable);
+        return orders.stream()
+            .map(this::convertToDTO)
+            .collect(Collectors.toList());
+    }
+    
+    public OrderDTO updateOrderStatus(Long orderId, OrderStatus newStatus) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new OrderNotFoundException("Order not found"));
+        
+        // Validate status transition
+        validateStatusTransition(order.getStatus(), newStatus);
+        
+        order.setStatus(newStatus);
+        
+        if (newStatus == OrderStatus.DELIVERED) {
+            order.setDeliveredAt(LocalDateTime.now());
+        }
+        
+        Order updatedOrder = orderRepository.save(order);
+        
+        // Send status update notification
+        notificationService.sendOrderStatusUpdate(updatedOrder);
+        
+        return convertToDTO(updatedOrder);
+    }
+    
+    public void cancelOrder(Long orderId, Long userId) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new OrderNotFoundException("Order not found"));
+        
+        // Verify order belongs to user
+        if (!order.getUser().getId().equals(userId)) {
+            throw new UnauthorizedAccessException("Access denied");
+        }
+        
+        // Check if order can be cancelled
+        if (!order.getStatus().isCancellable()) {
+            throw new InvalidOrderStateException("Order cannot be cancelled");
+        }
+        
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
+        
+        // Restore product stock
+        for (OrderItem item : order.getOrderItems()) {
+            productService.updateStock(item.getProduct().getId(), item.getQuantity());
+        }
+        
+        // Process refund if payment was made
+        if (order.getPayment() != null && 
+            order.getPayment().getStatus() == PaymentStatus.COMPLETED) {
+            paymentService.processRefund(order.getPayment().getId());
+        }
+        
+        notificationService.sendOrderCancellation(order);
+    }
+    
+    private String generateOrderNumber() {
+        return "ORD-" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE) + 
+               "-" + RandomStringUtils.randomNumeric(6);
+    }
+    
+    private BigDecimal calculateShippingCost(OrderCreateDTO createDTO) {
+        // Simple shipping cost calculation
+        // In real implementation, this would be more complex
+        return new BigDecimal("10.00");
+    }
+    
+    private void validateStatusTransition(OrderStatus current, OrderStatus next) {
+        // Define valid transitions
+        Map<OrderStatus, List<OrderStatus>> validTransitions = Map.of(
+            OrderStatus.PENDING, List.of(OrderStatus.CONFIRMED, OrderStatus.CANCELLED),
+            OrderStatus.CONFIRMED, List.of(OrderStatus.PROCESSING, OrderStatus.CANCELLED),
+            OrderStatus.PROCESSING, List.of(OrderStatus.SHIPPED, OrderStatus.CANCELLED),
+            OrderStatus.SHIPPED, List.of(OrderStatus.DELIVERED),
+            OrderStatus.DELIVERED, List.of(OrderStatus.RETURNED)
+        );
+        
+        if (!validTransitions.getOrDefault(current, List.of()).contains(next)) {
+            throw new InvalidStatusTransitionException(
+                "Cannot transition from " + current + " to " + next);
+        }
+    }
+    
+    private OrderDTO convertToDTO(Order order) {
+        return OrderDTO.builder()
+            .id(order.getId())
+            .orderNumber(order.getOrderNumber())
+            .userId(order.getUser().getId())
+            .status(order.getStatus())
+            .subtotal(order.getSubtotal())
+            .tax(order.getTax())
+            .shippingCost(order.getShippingCost())
+            .totalAmount(order.getTotalAmount())
+            .items(order.getOrderItems().stream()
+                .map(this::convertItemToDTO)
+                .collect(Collectors.toList()))
+            .createdAt(order.getCreatedAt())
+            .build();
+    }
+}
+```
+
+### 3.4 Payment Module
+
+#### 3.4.1 Payment Entity
+
+```java
+@Entity
+@Table(name = "payments")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Payment {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @OneToOne
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+    
+    @Column(unique = true, nullable = false)
+    private String transactionId;
+    
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
+    
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus status;
+    
+    @Column(nullable = false)
+    private BigDecimal amount;
+    
+    private String paymentGatewayResponse;
+    
+    @CreatedDate
+    private LocalDateTime createdAt;
+    
+    private LocalDateTime completedAt;
+}
+```
+
+#### 3.4.2 Payment Service
+
+```java
+@Service
+@Transactional
+public class PaymentService {
+    
+    private final PaymentRepository paymentRepository;
+    private final OrderRepository orderRepository;
+    private final PaymentGatewayService paymentGatewayService;
+    
+    public PaymentDTO processPayment(PaymentRequestDTO requestDTO) {
+        // Validate order
+        Order order = orderRepository.findById(requestDTO.getOrderId())
+            .orElseThrow(() -> new OrderNotFoundException("Order not found"));
+        
+        // Check if payment already exists
+        if (paymentRepository.existsByOrderId(order.getId())) {
+            throw new PaymentAlreadyExistsException("Payment already processed for this order");
+        }
+        
+        // Create payment record
+        Payment payment = new Payment();
+        payment.setOrder(order);
+        payment.setTransactionId(generateTransactionId());
+        payment.setPaymentMethod(requestDTO.getPaymentMethod());
+        payment.setAmount(order.getTotalAmount());
+        payment.setStatus(PaymentStatus.PENDING);
+        
+        Payment savedPayment = paymentRepository.save(payment);
+        
+        try {
+            // Process payment through gateway
+            PaymentGatewayResponse response = paymentGatewayService.processPayment(
+                PaymentGatewayRequest.builder()
+                    .transactionId(payment.getTransactionId())
+                    .amount(payment.getAmount())
+                    .paymentMethod(requestDTO.getPaymentMethod())
+                    .cardDetails(requestDTO.getCardDetails())
+                    .build()
+            );
+            
+            // Update payment status
+            savedPayment.setStatus(PaymentStatus.COMPLETED);
+            savedPayment.setCompletedAt(LocalDateTime.now());
+            savedPayment.setPaymentGatewayResponse(response.toString());
+            
+            // Update order status
+            order.setStatus(OrderStatus.CONFIRMED);
+            orderRepository.save(order);
+            
+        } catch (PaymentGatewayException e) {
+            savedPayment.setStatus(PaymentStatus.FAILED);
+            savedPayment.setPaymentGatewayResponse(e.getMessage());
+            throw new PaymentProcessingException("Payment processing failed", e);
+        } finally {
+            paymentRepository.save(savedPayment);
+        }
+        
+        return convertToDTO(savedPayment);
+    }
+    
+    public void processRefund(Long paymentId) {
+        Payment payment = paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new PaymentNotFoundException("Payment not found"));
+        
+        if (payment.getStatus() != PaymentStatus.COMPLETED) {
+            throw new InvalidPaymentStateException("Only completed payments can be refunded");
+        }
+        
+        try {
+            paymentGatewayService.processRefund(payment.getTransactionId());
+            payment.setStatus(PaymentStatus.REFUNDED);
+            paymentRepository.save(payment);
+        } catch (PaymentGatewayException e) {
+            throw new RefundProcessingException("Refund processing failed", e);
+        }
+    }
+    
+    private String generateTransactionId() {
+        return "TXN-" + System.currentTimeMillis() + "-" + 
+               RandomStringUtils.randomAlphanumeric(8).toUpperCase();
+    }
+    
+    private PaymentDTO convertToDTO(Payment payment) {
+        return PaymentDTO.builder()
+            .id(payment.getId())
+            .orderId(payment.getOrder().getId())
+            .transactionId(payment.getTransactionId())
+            .paymentMethod(payment.getPaymentMethod())
+            .status(payment.getStatus())
+            .amount(payment.getAmount())
+            .createdAt(payment.getCreatedAt())
+            .completedAt(payment.getCompletedAt())
+            .build();
+    }
+}
+```
+
+## 4. Database Design
+
+### 4.1 Database Schema
 
 ```sql
-CREATE TABLE cart_items (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    product_id INTEGER NOT NULL REFERENCES products(id),
-    quantity INTEGER NOT NULL CHECK (quantity > 0),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, product_id)
+-- Users Table
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(20) UNIQUE,
+    role VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_cart_items_user_id ON cart_items(user_id);
-CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
-CREATE INDEX idx_cart_items_user_product ON cart_items(user_id, product_id);
-
-CREATE TABLE cart_summaries (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
-    subtotal DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    tax DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    total DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+-- Addresses Table
+CREATE TABLE addresses (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    address_line1 VARCHAR(255) NOT NULL,
+    address_line2 VARCHAR(255),
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100) NOT NULL,
+    postal_code VARCHAR(20) NOT NULL,
+    country VARCHAR(100) NOT NULL,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_cart_summaries_user_id ON cart_summaries(user_id);
+-- Categories Table
+CREATE TABLE categories (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    parent_id BIGINT,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_id) REFERENCES categories(id)
+);
 
+-- Products Table
 CREATE TABLE products (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     price DECIMAL(10, 2) NOT NULL,
-    max_order_quantity INTEGER NOT NULL DEFAULT 10,
     stock_quantity INTEGER NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    sku VARCHAR(50) UNIQUE,
+    category_id BIGINT,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+);
+
+-- Product Images Table
+CREATE TABLE product_images (
+    id BIGSERIAL PRIMARY KEY,
+    product_id BIGINT NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    display_order INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+
+-- Orders Table
+CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    order_number VARCHAR(50) UNIQUE NOT NULL,
+    user_id BIGINT NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    subtotal DECIMAL(10, 2) NOT NULL,
+    tax DECIMAL(10, 2) NOT NULL,
+    shipping_cost DECIMAL(10, 2) NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    shipping_address_id BIGINT,
+    billing_address_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    delivered_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (shipping_address_id) REFERENCES addresses(id),
+    FOREIGN KEY (billing_address_id) REFERENCES addresses(id)
+);
+
+-- Order Items Table
+CREATE TABLE order_items (
+    id BIGSERIAL PRIMARY KEY,
+    order_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    quantity INTEGER NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    subtotal DECIMAL(10, 2) NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- Payments Table
+CREATE TABLE payments (
+    id BIGSERIAL PRIMARY KEY,
+    order_id BIGINT UNIQUE NOT NULL,
+    transaction_id VARCHAR(100) UNIQUE NOT NULL,
+    payment_method VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    payment_gateway_response TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
+-- Reviews Table
+CREATE TABLE reviews (
+    id BIGSERIAL PRIMARY KEY,
+    product_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(product_id, user_id)
+);
+
+-- Shopping Cart Table
+CREATE TABLE shopping_cart (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Cart Items Table
+CREATE TABLE cart_items (
+    id BIGSERIAL PRIMARY KEY,
+    cart_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    quantity INTEGER NOT NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cart_id) REFERENCES shopping_cart(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    UNIQUE(cart_id, product_id)
 );
 ```
 
----
+### 4.2 Indexes
 
-## Appendix B: Modification Summary
+```sql
+-- Performance indexes
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_products_category ON products(category_id);
+CREATE INDEX idx_products_active ON products(active);
+CREATE INDEX idx_orders_user ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created ON orders(created_at);
+CREATE INDEX idx_order_items_order ON order_items(order_id);
+CREATE INDEX idx_order_items_product ON order_items(product_id);
+CREATE INDEX idx_payments_order ON payments(order_id);
+CREATE INDEX idx_reviews_product ON reviews(product_id);
+CREATE INDEX idx_reviews_user ON reviews(user_id);
+```
 
-This document has been updated with the following targeted modifications based on RCA metadata:
+## 5. API Specifications
 
-### 1. Shopping Cart Component (Frontend) - Empty Cart View
-- **Location**: Section 4.1, `ShoppingCart.jsx`
-- **Change**: Added explicit UI redirection link with "Continue Shopping" button in empty cart view
-- **Reason**: Required by story acceptance criteria
+### 5.1 Authentication APIs
 
-### 2. Shopping Cart Service (Backend) - Automatic Recalculation
-- **Location**: Section 3.2, `shopping_cart_service.py`
-- **Change**: Added `_recalculate_cart_totals()` method and integrated it into all mutation operations (add, update, remove)
-- **Reason**: Mandates recalculation on every mutation for business correctness
+#### POST /api/v1/auth/register
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!",
+  "firstName": "John",
+  "lastName": "Doe",
+  "phoneNumber": "+1234567890"
+}
+```
 
-### 3. Shopping Cart Controller (Backend) - Max Quantity Validation on Update
-- **Location**: Section 3.1, `shopping_cart_controller.py`, `update_cart_item_quantity` endpoint
-- **Change**: Added validation to enforce max_order_quantity when updating cart item quantity
-- **Reason**: Story requires enforcement for all cart operations, not just add
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "User registered successfully",
+  "data": {
+    "id": 1,
+    "email": "user@example.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "role": "CUSTOMER",
+    "status": "ACTIVE"
+  }
+}
+```
 
-### 4. Cart Item Component (Frontend) - UI Validation and Alert
-- **Location**: Section 4.2, `CartItem.jsx`
-- **Change**: Added UI validation in `handleQuantityChange` to prevent exceeding max_order_quantity with appropriate error message and alert
-- **Reason**: Provides user-friendly validation feedback
+#### POST /api/v1/auth/login
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
 
----
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "tokenType": "Bearer",
+    "expiresIn": 3600,
+    "user": {
+      "id": 1,
+      "email": "user@example.com",
+      "firstName": "John",
+      "lastName": "Doe",
+      "role": "CUSTOMER"
+    }
+  }
+}
+```
 
-**Document Version**: 2.0  
-**Last Modified**: 2024  
-**Modifications Applied**: 4 targeted changes from RCA metadata  
+### 5.2 Product APIs
+
+#### GET /api/v1/products
+**Query Parameters:**
+- page (default: 0)
+- size (default: 20)
+- sort (default: createdAt,desc)
+- categoryId (optional)
+- minPrice (optional)
+- maxPrice (optional)
+- search (optional)
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "id": 1,
+        "name": "Product Name",
+        "description": "Product description",
+        "price": 99.99,
+        "stockQuantity": 50,
+        "sku": "PRD-123456",
+        "categoryId": 1,
+        "categoryName": "Electronics",
+        "averageRating": 4.5,
+        "images": [
+          {
+            "id": 1,
+            "url": "https://example.com/image1.jpg",
+            "isPrimary": true
+          }
+        ]
+      }
+    ],
+    "pageable": {
+      "pageNumber": 0,
+      "pageSize": 20,
+      "totalElements": 100,
+      "totalPages": 5
+    }
+  }
+}
+```
+
+#### GET /api/v1/products/{id}
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "Product Name",
+    "description": "Detailed product description",
+    "price": 99.99,
+    "stockQuantity": 50,
+    "sku": "PRD-123456",
+    "categoryId": 1,
+    "categoryName": "Electronics",
+    "averageRating": 4.5,
+    "reviewCount": 25,
+    "images": [
+      {
+        "id": 1,
+        "url": "https://example.com/image1.jpg",
+        "isPrimary": true
+      }
+    ],
+    "specifications": {
+      "brand": "BrandName",
+      "model": "Model123",
+      "warranty": "1 year"
+    }
+  }
+}
+```
+
+### 5.3 Order APIs
+
+#### POST /api/v1/orders
+**Request:**
+```json
+{
+  "items": [
+    {
+      "productId": 1,
+      "quantity": 2
+    }
+  ],
+  "shippingAddressId": 1,
+  "billingAddressId": 1
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Order created successfully",
+  "data": {
+    "id": 1,
+    "orderNumber": "ORD-20240115-123456",
+    "status": "PENDING",
+    "subtotal": 199.98,
+    "tax": 19.99,
+    "shippingCost": 10.00,
+    "totalAmount": 229.97,
+    "items": [
+      {
+        "productId": 1,
+        "productName": "Product Name",
+        "quantity": 2,
+        "price": 99.99,
+        "subtotal": 199.98
+      }
+    ],
+    "createdAt": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+#### GET /api/v1/orders/{id}
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "orderNumber": "ORD-20240115-123456",
+    "status": "CONFIRMED",
+    "subtotal": 199.98,
+    "tax": 19.99,
+    "shippingCost": 10.00,
+    "totalAmount": 229.97,
+    "items": [
+      {
+        "productId": 1,
+        "productName": "Product Name",
+        "quantity": 2,
+        "price": 99.99,
+        "subtotal": 199.98
+      }
+    ],
+    "shippingAddress": {
+      "addressLine1": "123 Main St",
+      "city": "New York",
+      "state": "NY",
+      "postalCode": "10001",
+      "country": "USA"
+    },
+    "payment": {
+      "transactionId": "TXN-123456",
+      "method": "CREDIT_CARD",
+      "status": "COMPLETED"
+    },
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T10:35:00Z"
+  }
+}
+```
+
+## 6. Security Implementation
+
+### 6.1 JWT Authentication
+
+```java
+@Component
+public class JwtTokenProvider {
+    
+    @Value("${jwt.secret}")
+    private String jwtSecret;
+    
+    @Value("${jwt.expiration}")
+    private long jwtExpirationMs;
+    
+    public String generateToken(Authentication authentication) {
+        UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+        
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
+        
+        return Jwts.builder()
+            .setSubject(Long.toString(userPrincipal.getId()))
+            .claim("email", userPrincipal.getEmail())
+            .claim("role", userPrincipal.getRole())
+            .setIssuedAt(now)
+            .setExpiration(expiryDate)
+            .signWith(SignatureAlgorithm.HS512, jwtSecret)
+            .compact();
+    }
+    
+    public Long getUserIdFromToken(String token) {
+        Claims claims = Jwts.parser()
+            .setSigningKey(jwtSecret)
+            .parseClaimsJws(token)
+            .getBody();
+        
+        return Long.parseLong(claims.getSubject());
+    }
+    
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token);
+            return true;
+        } catch (SignatureException ex) {
+            logger.error("Invalid JWT signature");
+        } catch (MalformedJwtException ex) {
+            logger.error("Invalid JWT token");
+        } catch (ExpiredJwtException ex) {
+            logger.error("Expired JWT token");
+        } catch (UnsupportedJwtException ex) {
+            logger.error("Unsupported JWT token");
+        } catch (IllegalArgumentException ex) {
+            logger.error("JWT claims string is empty");
+        }
+        return false;
+    }
+}
+```
+
+### 6.2 Security Configuration
+
+```java
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+public class SecurityConfig {
+    
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf().disable()
+            .cors().and()
+            .sessionManagement()
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            .and()
+            .authorizeHttpRequests()
+                .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers("/api/v1/products/**").permitAll()
+                .requestMatchers("/api/v1/categories/**").permitAll()
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                .anyRequest().authenticated()
+            .and()
+            .addFilterBefore(jwtAuthenticationFilter(), 
+                UsernamePasswordAuthenticationFilter.class);
+        
+        return http.build();
+    }
+    
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+    
+    @Bean
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration authConfig) throws Exception {
+        return authConfig.getAuthenticationManager();
+    }
+}
+```
+
+### 6.3 Input Validation
+
+```java
+public class UserRegistrationDTO {
+    
+    @NotBlank(message = "Email is required")
+    @Email(message = "Invalid email format")
+    private String email;
+    
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
+    @Pattern(regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=]).*$",
+             message = "Password must contain at least one digit, one lowercase, one uppercase, and one special character")
+    private String password;
+    
+    @NotBlank(message = "First name is required")
+    @Size(min = 2, max = 50, message = "First name must be between 2 and 50 characters")
+    private String firstName;
+    
+    @NotBlank(message = "Last name is required")
+    @Size(min = 2, max = 50, message = "Last name must be between 2 and 50 characters")
+    private String lastName;
+    
+    @Pattern(regexp = "^\\+?[1-9]\\d{1,14}$", message = "Invalid phone number format")
+    private String phoneNumber;
+}
+```
+
+## 7. Error Handling
+
+### 7.1 Global Exception Handler
+
+```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(
+            ResourceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+    
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(
+            ValidationException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiResponse.error(ex.getMessage(), ex.getErrors()));
+    }
+    
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error -> 
+            errors.put(error.getField(), error.getDefaultMessage())
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiResponse.error("Validation failed", errors));
+    }
+    
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorized(
+            UnauthorizedException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+    
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleGenericException(
+            Exception ex) {
+        logger.error("Unexpected error occurred", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ApiResponse.error("An unexpected error occurred"));
+    }
+}
+```
+
+### 7.2 Custom Exceptions
+
+```java
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) {
+        super(message);
+    }
+}
+
+public class ValidationException extends RuntimeException {
+    private Map<String, String> errors;
+    
+    public ValidationException(String message, Map<String, String> errors) {
+        super(message);
+        this.errors = errors;
+    }
+    
+    public Map<String, String> getErrors() {
+        return errors;
+    }
+}
+
+public class UnauthorizedException extends RuntimeException {
+    public UnauthorizedException(String message) {
+        super(message);
+    }
+}
+```
+
+## 8. Caching Strategy
+
+### 8.1 Redis Configuration
+
+```java
+@Configuration
+@EnableCaching
+public class RedisConfig {
+    
+    @Bean
+    public RedisConnectionFactory redisConnectionFactory() {
+        RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
+        config.setHostName("localhost");
+        config.setPort(6379);
+        return new LettuceConnectionFactory(config);
+    }
+    
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+            .entryTtl(Duration.ofHours(1))
+            .serializeKeysWith(
+                RedisSerializationContext.SerializationPair.fromSerializer(
+                    new StringRedisSerializer()))
+            .serializeValuesWith(
+                RedisSerializationContext.SerializationPair.fromSerializer(
+                    new GenericJackson2JsonRedisSerializer()));
+        
+        return RedisCacheManager.builder(connectionFactory)
+            .cacheDefaults(config)
+            .build();
+    }
+}
+```
+
+### 8.2 Cache Usage
+
+```java
+@Service
+public class ProductService {
+    
+    @Cacheable(value = "products", key = "#id")
+    public ProductDTO getProductById(Long id) {
+        // Method implementation
+    }
+    
+    @CacheEvict(value = "products", key = "#id")
+    public void updateProduct(Long id, ProductUpdateDTO updateDTO) {
+        // Method implementation
+    }
+    
+    @CacheEvict(value = "products", allEntries = true)
+    public void clearProductCache() {
+        // Clears all product cache entries
+    }
+}
+```
+
+## 9. Testing Strategy
+
+### 9.1 Unit Tests
+
+```java
+@ExtendWith(MockitoExtension.class)
+class UserServiceTest {
+    
+    @Mock
+    private UserRepository userRepository;
+    
+    @Mock
+    private PasswordEncoder passwordEncoder;
+    
+    @Mock
+    private EmailService emailService;
+    
+    @InjectMocks
+    private UserService userService;
+    
+    @Test
+    void testRegisterUser_Success() {
+        // Arrange
+        UserRegistrationDTO registrationDTO = new UserRegistrationDTO();
+        registrationDTO.setEmail("test@example.com");
+        registrationDTO.setPassword("Password123!");
+        registrationDTO.setFirstName("John");
+        registrationDTO.setLastName("Doe");
+        
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
+        when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
+        
+        // Act
+        UserDTO result = userService.registerUser(registrationDTO);
+        
+        // Assert
+        assertNotNull(result);
+        assertEquals("test@example.com", result.getEmail());
+        verify(emailService).sendWelcomeEmail("test@example.com");
+    }
+    
+    @Test
+    void testRegisterUser_EmailAlreadyExists() {
+        // Arrange
+        UserRegistrationDTO registrationDTO = new UserRegistrationDTO();
+        registrationDTO.setEmail("existing@example.com");
+        
+        when(userRepository.existsByEmail("existing@example.com")).thenReturn(true);
+        
+        // Act & Assert
+        assertThrows(UserAlreadyExistsException.class, 
+            () -> userService.registerUser(registrationDTO));
+    }
+}
+```
+
+### 9.2 Integration Tests
+
+```java
+@SpringBootTest
+@AutoConfigureMockMvc
+class OrderControllerIntegrationTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    void testCreateOrder_Success() throws Exception {
+        // Arrange
+        OrderCreateDTO createDTO = new OrderCreateDTO();
+        // Set up DTO
+        
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createDTO)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.orderNumber").exists());
+    }
+}
+```
+
+## 10. Deployment Configuration
+
+### 10.1 Docker Configuration
+
+```dockerfile
+# Backend Dockerfile
+FROM openjdk:17-jdk-slim
+WORKDIR /app
+COPY target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+### 10.2 Docker Compose
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ecommerce
+      SPRING_REDIS_HOST: redis
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+```
+
+## 11. Monitoring and Logging
+
+### 11.1 Logging Configuration
+
+```yaml
+logging:
+  level:
+    root: INFO
+    com.ecommerce: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/application.log
+    max-size: 10MB
+    max-history: 30
+```
+
+### 11.2 Metrics Configuration
+
+```java
+@Configuration
+public class MetricsConfig {
+    
+    @Bean
+    public MeterRegistryCustomizer<MeterRegistry> metricsCommonTags() {
+        return registry -> registry.config().commonTags(
+            "application", "ecommerce-platform",
+            "environment", "production"
+        );
+    }
+}
+```
+
+## 12. Performance Optimization
+
+### 12.1 Database Query Optimization
+
+```java
+@Repository
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    
+    @Query("SELECT p FROM Product p " +
+           "LEFT JOIN FETCH p.category " +
+           "LEFT JOIN FETCH p.images " +
+           "WHERE p.id = :id")
+    Optional<Product> findByIdWithDetails(@Param("id") Long id);
+    
+    @Query("SELECT p FROM Product p " +
+           "WHERE p.category.id = :categoryId " +
+           "AND p.active = true " +
+           "AND p.stockQuantity > 0")
+    Page<Product> findAvailableProductsByCategory(
+        @Param("categoryId") Long categoryId, 
+        Pageable pageable);
+}
+```
+
+### 12.2 Connection Pooling
+
+```yaml
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+```
+
+## 13. Conclusion
+
+This Low Level Design document provides comprehensive technical specifications for implementing the E-commerce Platform. It covers all major components including user management, product catalog, order processing, and payment handling. The design emphasizes:
+
+- **Scalability**: Through caching, connection pooling, and efficient database queries
+- **Security**: Via JWT authentication, input validation, and secure password handling
+- **Maintainability**: Using clean code principles, proper layering, and comprehensive testing
+- **Performance**: Through optimization strategies and monitoring capabilities
+
 **Status**: Complete and Ready for Review
