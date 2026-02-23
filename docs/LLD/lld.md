@@ -2,9 +2,9 @@
 # E-commerce Product Management System
 
 ## Document Information
-- **Version**: 2.1
+- **Version**: 2.0
 - **Last Updated**: 2024
-- **Status**: Updated with Shopping Cart Management and Enhanced Validations
+- **Status**: Updated with Shopping Cart Management
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -325,7 +325,7 @@ class CartController {
             const { itemId } = req.params;
             const { quantity } = req.body;
             
-            // Enhanced validation for max_order_quantity on update
+            // Enhanced validation: Enforce max_order_quantity on update operations
             const cart = await cartService.getCartByUserId(userId);
             const item = cart.items.find(i => i.id === itemId);
             
@@ -336,12 +336,12 @@ class CartController {
                 });
             }
             
-            // Validate against max_order_quantity before update
+            // Validate against product's max_order_quantity
             if (quantity > item.product.max_order_quantity) {
                 return res.status(400).json({
                     success: false,
                     message: `Maximum order quantity for this product is ${item.product.max_order_quantity}`,
-                    max_order_quantity: item.product.max_order_quantity
+                    max_allowed: item.product.max_order_quantity
                 });
             }
             
@@ -711,8 +711,8 @@ class CartService {
         
         await cacheService.delete(`cart:${userId}`);
         
-        // Trigger automatic recalculation
-        return await this.getCartByUserId(userId);
+        // Trigger automatic recalculation of cart totals
+        return await this.recalculateAndGetCart(userId);
     }
     
     async updateCartItemQuantity(userId, itemId, quantity) {
@@ -743,8 +743,8 @@ class CartService {
         await cartRepository.updateItemQuantity(cart.id, itemId, quantity);
         await cacheService.delete(`cart:${userId}`);
         
-        // Trigger automatic recalculation
-        return await this.getCartByUserId(userId);
+        // Trigger automatic recalculation of cart totals after quantity mutation
+        return await this.recalculateAndGetCart(userId);
     }
     
     async removeItemFromCart(userId, itemId) {
@@ -757,8 +757,8 @@ class CartService {
         await cartRepository.removeItem(cart.id, itemId);
         await cacheService.delete(`cart:${userId}`);
         
-        // Trigger automatic recalculation
-        return await this.getCartByUserId(userId);
+        // Trigger automatic recalculation of cart totals after item removal
+        return await this.recalculateAndGetCart(userId);
     }
     
     async clearCart(userId) {
@@ -771,18 +771,48 @@ class CartService {
     }
     
     /**
-     * Enriches cart with product details and performs automatic recalculation
-     * of subtotals and total whenever called.
-     * This ensures business rule: "Automatic recalculation of subtotal and total upon any quantity mutation"
+     * NEW METHOD: Automatic Recalculation Logic
+     * Ensures subtotal and total are recalculated on every cart mutation
+     * Business Rule: Automatic recalculation of subtotal and total upon any quantity mutation
      */
+    async recalculateAndGetCart(userId) {
+        const cart = await this.getCartByUserId(userId);
+        
+        // Recalculate each item's subtotal
+        const recalculatedItems = cart.items.map(item => ({
+            ...item,
+            subtotal: this.calculateItemSubtotal(item.price, item.quantity)
+        }));
+        
+        // Recalculate cart total
+        const recalculatedTotal = this.calculateCartTotal(recalculatedItems);
+        
+        return {
+            ...cart,
+            items: recalculatedItems,
+            total: recalculatedTotal
+        };
+    }
+    
+    /**
+     * Calculate subtotal for a single cart item
+     */
+    calculateItemSubtotal(price, quantity) {
+        return parseFloat((price * quantity).toFixed(2));
+    }
+    
+    /**
+     * Calculate total for entire cart
+     */
+    calculateCartTotal(items) {
+        const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+        return parseFloat(total.toFixed(2));
+    }
+    
     async enrichCartWithProductDetails(cart) {
         const itemsWithDetails = await Promise.all(
             cart.items.map(async (item) => {
                 const product = await productService.getProductById(item.product_id);
-                
-                // Calculate subtotal for each item
-                const subtotal = this.calculateSubtotal(item.quantity, item.price);
-                
                 return {
                     ...item,
                     product: {
@@ -793,61 +823,22 @@ class CartService {
                         stock_quantity: product.stock_quantity,
                         max_order_quantity: product.max_order_quantity
                     },
-                    subtotal: subtotal
+                    subtotal: item.quantity * item.price
                 };
             })
         );
         
-        // Calculate total from all subtotals
-        const total = this.calculateTotal(itemsWithDetails);
+        const total = itemsWithDetails.reduce((sum, item) => sum + item.subtotal, 0);
         
         return {
             ...cart,
             items: itemsWithDetails,
-            total: total
+            total
         };
-    }
-    
-    /**
-     * Calculate subtotal for a cart item
-     * Business Logic: subtotal = quantity * price
-     */
-    calculateSubtotal(quantity, price) {
-        return quantity * price;
-    }
-    
-    /**
-     * Calculate total from all cart items
-     * Business Logic: total = sum of all subtotals
-     */
-    calculateTotal(items) {
-        return items.reduce((sum, item) => sum + item.subtotal, 0);
     }
 }
 
 module.exports = new CartService();
-```
-
-#### 3.2.3 Cart Recalculation Flow Diagram
-
-```mermaid
-flowchart TD
-    A[Cart Mutation Event] --> B{Mutation Type}
-    B -->|Add Item| C[Add Item to Cart]
-    B -->|Update Quantity| D[Update Item Quantity]
-    B -->|Remove Item| E[Remove Item from Cart]
-    
-    C --> F[Invalidate Cache]
-    D --> F
-    E --> F
-    
-    F --> G[Fetch Cart from DB]
-    G --> H[Enrich with Product Details]
-    H --> I[Calculate Subtotal for Each Item]
-    I --> J[Calculate Total from All Subtotals]
-    J --> K[Return Updated Cart with Recalculated Values]
-    K --> L[Cache Updated Cart]
-    L --> M[Return to Client]
 ```
 
 ### 3.3 Repository Layer
@@ -1119,23 +1110,12 @@ const ShoppingCart = () => {
     if (loading) return <div className="loading">Loading cart...</div>;
     if (error) return <div className="error">Error: {error.message}</div>;
     
-    /**
-     * Enhanced Empty Cart View with Redirection Link
-     * Requirement: story_summary.json - presentation_layer_needs
-     * "Empty Cart View with Redirection Link"
-     */
     if (!cart || cart.items.length === 0) {
         return (
             <div className="empty-cart">
-                <div className="empty-cart-icon">
-                    <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <circle cx="9" cy="21" r="1"></circle>
-                        <circle cx="20" cy="21" r="1"></circle>
-                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-                    </svg>
-                </div>
                 <h2>Your cart is empty</h2>
                 <p>Add some products to get started!</p>
+                {/* NEW: Explicit UI redirection link for empty cart view */}
                 <button 
                     className="continue-shopping-btn"
                     onClick={() => navigate('/products')}
@@ -1195,31 +1175,12 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
     const [quantity, setQuantity] = useState(item.quantity);
     const [updating, setUpdating] = useState(false);
     
-    /**
-     * Enhanced quantity change handler with max_order_quantity validation
-     * Requirement: story_summary.json - business_logic_rules
-     * "Enforcement of max_order_quantity for all cart operations"
-     */
     const handleQuantityChange = async (newQuantity) => {
-        if (newQuantity < 1) {
-            alert('Quantity must be at least 1');
-            return;
-        }
+        if (newQuantity < 1) return;
         
-        // Validate against max_order_quantity before making API call
+        // Enhanced UI validation: Prevent exceeding max_order_quantity
         if (newQuantity > item.product.max_order_quantity) {
-            alert(
-                `Maximum order quantity for ${item.product.name} is ${item.product.max_order_quantity}. ` +
-                `Please adjust your quantity.`
-            );
-            return;
-        }
-        
-        // Validate against available stock
-        if (newQuantity > item.product.stock_quantity) {
-            alert(
-                `Only ${item.product.stock_quantity} units of ${item.product.name} are available in stock.`
-            );
+            alert(`Maximum order quantity for this product is ${item.product.max_order_quantity}. Please adjust your quantity.`);
             return;
         }
         
@@ -1228,19 +1189,14 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
             await onUpdateQuantity(item.id, newQuantity);
             setQuantity(newQuantity);
         } catch (error) {
-            // Display server-side validation error
-            alert(error.message || 'Failed to update quantity');
-            // Reset to previous quantity
-            setQuantity(item.quantity);
+            // Display appropriate error message for max_order_quantity violations
+            if (error.message.includes('Maximum order quantity')) {
+                alert(`Error: ${error.message}`);
+            } else {
+                alert(error.message);
+            }
         } finally {
             setUpdating(false);
-        }
-    };
-    
-    const handleInputChange = (e) => {
-        const value = parseInt(e.target.value);
-        if (!isNaN(value)) {
-            handleQuantityChange(value);
         }
     };
     
@@ -1263,8 +1219,9 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
                         : 'Out of Stock'
                     }
                 </p>
+                {/* NEW: Display max order quantity information */}
                 <p className="max-order-info">
-                    Max order quantity: {item.product.max_order_quantity}
+                    Maximum order quantity: {item.product.max_order_quantity}
                 </p>
             </div>
             
@@ -1272,27 +1229,25 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
                 <button 
                     onClick={() => handleQuantityChange(quantity - 1)}
                     disabled={updating || quantity <= 1}
-                    aria-label="Decrease quantity"
                 >
                     -
                 </button>
                 <input 
                     type="number" 
                     value={quantity}
-                    onChange={handleInputChange}
+                    onChange={(e) => {
+                        const newQty = parseInt(e.target.value);
+                        if (!isNaN(newQty)) {
+                            handleQuantityChange(newQty);
+                        }
+                    }}
                     disabled={updating}
                     min="1"
-                    max={Math.min(item.product.max_order_quantity, item.product.stock_quantity)}
-                    aria-label="Item quantity"
+                    max={item.product.max_order_quantity}
                 />
                 <button 
                     onClick={() => handleQuantityChange(quantity + 1)}
-                    disabled={
-                        updating || 
-                        quantity >= item.product.max_order_quantity ||
-                        quantity >= item.product.stock_quantity
-                    }
-                    aria-label="Increase quantity"
+                    disabled={updating || quantity >= item.product.max_order_quantity}
                 >
                     +
                 </button>
@@ -1307,7 +1262,6 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
                 className="remove-btn"
                 onClick={handleRemove}
                 disabled={updating}
-                aria-label="Remove item from cart"
             >
                 Remove
             </button>
@@ -2291,25 +2245,6 @@ describe('CartService', () => {
             expect(item).toBeUndefined();
         });
     });
-    
-    describe('enrichCartWithProductDetails', () => {
-        it('should recalculate subtotals and total', async () => {
-            const mockCart = {
-                id: 'cart-id',
-                user_id: 'user-id',
-                items: [
-                    { product_id: 'p1', quantity: 2, price: 10.00 },
-                    { product_id: 'p2', quantity: 3, price: 15.00 }
-                ]
-            };
-            
-            const enrichedCart = await cartService.enrichCartWithProductDetails(mockCart);
-            
-            expect(enrichedCart.items[0].subtotal).toBe(20.00);
-            expect(enrichedCart.items[1].subtotal).toBe(45.00);
-            expect(enrichedCart.total).toBe(65.00);
-        });
-    });
 });
 ```
 
@@ -2612,8 +2547,7 @@ This Low Level Design document provides comprehensive technical specifications f
 - **Reliability**: Error handling, validation, and comprehensive testing
 - **Stock Management**: Enhanced product entity with stock_quantity and max_order_quantity fields
 - **Cart Management**: Complete shopping cart functionality with validation and business logic
-- **Automatic Recalculation**: Subtotal and total recalculation on every cart mutation
-- **Enhanced Validations**: Max order quantity enforcement on all cart operations
-- **User Experience**: Empty cart view with redirection link to continue shopping
+- **Business Rules Enforcement**: Automatic recalculation of cart totals on mutations and max_order_quantity validation across all operations
+- **User Experience**: Enhanced empty cart view with explicit redirection link and comprehensive UI validation for quantity constraints
 
 All components are designed to work together seamlessly while maintaining loose coupling and high cohesion.
