@@ -1,46 +1,35 @@
-# Low Level Design (LLD) Document
+# Low Level Design Document
+## Shopping Cart Feature
 
-## Project: E-Commerce Platform - Shopping Cart Feature
-
-### Version: 2.0
-### Date: 2024-01-15
-### Author: Development Team
-
----
-
-## Table of Contents
-1. [Introduction](#introduction)
-2. [System Architecture](#system-architecture)
-3. [Component Design](#component-design)
-4. [Data Models](#data-models)
-5. [API Specifications](#api-specifications)
-6. [Database Schema](#database-schema)
-7. [Sequence Diagrams](#sequence-diagrams)
-8. [Error Handling](#error-handling)
-9. [Security Considerations](#security-considerations)
-10. [Performance Optimization](#performance-optimization)
+### Version History
+| Version | Date | Author | Description |
+|---------|------|--------|-------------|
+| 1.0 | 2024-01-15 | Engineering Team | Initial LLD |
+| 1.1 | 2024-01-20 | Engineering Team | Updated with RCA modifications |
 
 ---
 
 ## 1. Introduction
 
 ### 1.1 Purpose
-This Low Level Design document provides detailed technical specifications for implementing the Shopping Cart feature in the e-commerce platform. It covers frontend components, backend services, database design, and API contracts.
+This Low Level Design (LLD) document describes the detailed technical implementation of the Shopping Cart feature for the e-commerce platform. It provides comprehensive specifications for developers to implement the feature according to business requirements.
 
 ### 1.2 Scope
-The shopping cart feature allows users to:
-- Add products to cart
-- Update product quantities
-- Remove products from cart
-- View cart summary with pricing
-- Proceed to checkout
+This document covers:
+- Backend API services and controllers
+- Frontend components and user interface
+- Data models and database schema
+- Business logic and validation rules
+- Error handling and security measures
+- Integration points and data flow
 
-### 1.3 Technology Stack
-- **Frontend**: React.js, Redux, TypeScript
-- **Backend**: Node.js, Express.js
-- **Database**: PostgreSQL
-- **Cache**: Redis
-- **Message Queue**: RabbitMQ
+### 1.3 Definitions and Acronyms
+- **LLD**: Low Level Design
+- **API**: Application Programming Interface
+- **REST**: Representational State Transfer
+- **CRUD**: Create, Read, Update, Delete
+- **UI**: User Interface
+- **UX**: User Experience
 
 ---
 
@@ -50,188 +39,471 @@ The shopping cart feature allows users to:
 
 ```mermaid
 graph TB
-    A[Client Browser] --> B[React Frontend]
-    B --> C[API Gateway]
-    C --> D[Shopping Cart Service]
-    C --> E[Product Service]
-    C --> F[User Service]
-    D --> G[PostgreSQL Database]
-    D --> H[Redis Cache]
-    D --> I[RabbitMQ]
-    I --> J[Inventory Service]
-    I --> K[Pricing Service]
-```
-
-### 2.2 Component Interaction Flow
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant F as Frontend
-    participant API as API Gateway
-    participant CS as Cart Service
-    participant DB as Database
-    participant Cache as Redis
+    subgraph Frontend
+        A[Shopping Cart UI]
+        B[Cart Item Component]
+        C[Empty Cart View]
+    end
     
-    U->>F: Add item to cart
-    F->>API: POST /api/cart/items
-    API->>CS: Process request
-    CS->>Cache: Check cart cache
-    CS->>DB: Update cart
-    DB-->>CS: Confirmation
-    CS->>Cache: Update cache
-    CS-->>API: Success response
-    API-->>F: Cart updated
-    F-->>U: Display updated cart
+    subgraph Backend
+        D[Shopping Cart Controller]
+        E[Shopping Cart Service]
+        F[Product Service]
+    end
+    
+    subgraph Database
+        G[(Cart Database)]
+        H[(Product Database)]
+    end
+    
+    A --> D
+    B --> D
+    C --> D
+    D --> E
+    D --> F
+    E --> G
+    F --> H
 ```
+
+### 2.2 Technology Stack
+- **Backend**: Node.js/Express or Python/Django
+- **Frontend**: React.js
+- **Database**: PostgreSQL/MySQL
+- **API Protocol**: REST
+- **Authentication**: JWT tokens
 
 ---
 
-## 3. Component Design
+## 3. Detailed Component Design
 
-### 3.1 Frontend Components
+### 3.1 Backend Components
 
-#### 3.1.1 Shopping Cart Component
+#### 3.1.1 Shopping Cart Controller
 
-**File**: `src/components/ShoppingCart/ShoppingCart.tsx`
+**Purpose**: Handle HTTP requests for cart operations
 
-**Purpose**: Main container component for the shopping cart interface
+**Endpoints**:
 
-**Props**:
-```typescript
-interface ShoppingCartProps {
-  userId: string;
-  onCheckout: () => void;
-  onContinueShopping: () => void;
-}
-```
+1. **Add Item to Cart**
+   - **Method**: POST
+   - **Path**: `/api/cart/items`
+   - **Request Body**:
+   ```json
+   {
+     "user_id": "string",
+     "product_id": "string",
+     "quantity": "integer"
+   }
+   ```
+   - **Response**: 201 Created
+   ```json
+   {
+     "cart_item_id": "string",
+     "product_id": "string",
+     "quantity": "integer",
+     "price": "decimal",
+     "subtotal": "decimal"
+   }
+   ```
+   - **Validation**:
+     - Verify product exists
+     - Check product availability
+     - Validate quantity > 0
+     - **Enforce max_order_quantity limit**
 
-**State Management**:
-```typescript
-interface CartState {
-  items: CartItem[];
-  subtotal: number;
-  tax: number;
-  shipping: number;
-  total: number;
-  loading: boolean;
-  error: string | null;
-}
-```
+2. **Update Cart Item Quantity** <!-- MODIFIED: Added max_order_quantity validation -->
+   - **Method**: PUT
+   - **Path**: `/api/cart/items/{item_id}`
+   - **Request Body**:
+   ```json
+   {
+     "quantity": "integer"
+   }
+   ```
+   - **Response**: 200 OK
+   ```json
+   {
+     "cart_item_id": "string",
+     "product_id": "string",
+     "quantity": "integer",
+     "price": "decimal",
+     "subtotal": "decimal"
+   }
+   ```
+   - **Validation**:
+     - Verify cart item exists
+     - Validate quantity > 0
+     - **NEW: Validate that updated quantity does not exceed product's max_order_quantity**
+     - **NEW: Return error 400 with message if max_order_quantity exceeded**
+   - **Logic**:
+     ```javascript
+     async updateCartItemQuantity(itemId, newQuantity) {
+       const cartItem = await getCartItem(itemId);
+       const product = await getProduct(cartItem.product_id);
+       
+       // MODIFIED: Added max_order_quantity validation on update
+       if (newQuantity > product.max_order_quantity) {
+         throw new ValidationError(
+           `Quantity cannot exceed maximum order quantity of ${product.max_order_quantity}`
+         );
+       }
+       
+       cartItem.quantity = newQuantity;
+       await cartService.updateItem(cartItem);
+       return cartItem;
+     }
+     ```
+
+3. **Remove Item from Cart**
+   - **Method**: DELETE
+   - **Path**: `/api/cart/items/{item_id}`
+   - **Response**: 204 No Content
+
+4. **Get Cart**
+   - **Method**: GET
+   - **Path**: `/api/cart`
+   - **Query Parameters**: `user_id`
+   - **Response**: 200 OK
+   ```json
+   {
+     "cart_id": "string",
+     "user_id": "string",
+     "items": [
+       {
+         "cart_item_id": "string",
+         "product_id": "string",
+         "product_name": "string",
+         "quantity": "integer",
+         "price": "decimal",
+         "subtotal": "decimal"
+       }
+     ],
+     "total": "decimal"
+   }
+   ```
+
+5. **Clear Cart**
+   - **Method**: DELETE
+   - **Path**: `/api/cart`
+   - **Query Parameters**: `user_id`
+   - **Response**: 204 No Content
+
+#### 3.1.2 Shopping Cart Service
+
+**Purpose**: Implement business logic for cart operations
 
 **Key Methods**:
-- `fetchCart()`: Retrieves cart data from backend
-- `updateQuantity(itemId: string, quantity: number)`: Updates item quantity
-- `removeItem(itemId: string)`: Removes item from cart
-- `calculateTotals()`: Computes cart totals
-- `handleCheckout()`: Initiates checkout process
 
-**Implementation**:
-```typescript
-import React, { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchCartItems, updateCartItem, removeCartItem } from '../../store/actions/cartActions';
-import CartItem from './CartItem';
-import CartSummary from './CartSummary';
-import EmptyCart from './EmptyCart';
+1. **addItemToCart(userId, productId, quantity)**
+   ```javascript
+   async addItemToCart(userId, productId, quantity) {
+     // Validate product exists and is available
+     const product = await productService.getProduct(productId);
+     if (!product) {
+       throw new NotFoundError('Product not found');
+     }
+     
+     if (!product.is_available) {
+       throw new ValidationError('Product is not available');
+     }
+     
+     // Validate max_order_quantity
+     if (quantity > product.max_order_quantity) {
+       throw new ValidationError(
+         `Quantity cannot exceed maximum order quantity of ${product.max_order_quantity}`
+       );
+     }
+     
+     // Get or create cart
+     let cart = await this.getCart(userId);
+     if (!cart) {
+       cart = await this.createCart(userId);
+     }
+     
+     // Check if item already exists in cart
+     const existingItem = cart.items.find(item => item.product_id === productId);
+     
+     if (existingItem) {
+       // Update quantity
+       const newQuantity = existingItem.quantity + quantity;
+       if (newQuantity > product.max_order_quantity) {
+         throw new ValidationError(
+           `Total quantity cannot exceed maximum order quantity of ${product.max_order_quantity}`
+         );
+       }
+       existingItem.quantity = newQuantity;
+       existingItem.subtotal = existingItem.quantity * product.price;
+       await this.updateCartItem(existingItem);
+     } else {
+       // Add new item
+       const cartItem = {
+         cart_id: cart.id,
+         product_id: productId,
+         quantity: quantity,
+         price: product.price,
+         subtotal: quantity * product.price
+       };
+       await this.createCartItem(cartItem);
+     }
+     
+     // NEW SECTION: Automatic recalculation of cart totals
+     // MODIFIED: Added explicit automatic recalculation logic
+     await this.recalculateCartTotals(cart.id);
+     
+     return await this.getCart(userId);
+   }
+   ```
 
-const ShoppingCart: React.FC<ShoppingCartProps> = ({ userId, onCheckout, onContinueShopping }) => {
-  const dispatch = useDispatch();
-  const { items, loading, error } = useSelector((state: RootState) => state.cart);
-  const [totals, setTotals] = useState({ subtotal: 0, tax: 0, shipping: 0, total: 0 });
+2. **updateCartItem(itemId, quantity)** <!-- MODIFIED: Added automatic recalculation -->
+   ```javascript
+   async updateCartItem(itemId, quantity) {
+     const cartItem = await this.getCartItem(itemId);
+     if (!cartItem) {
+       throw new NotFoundError('Cart item not found');
+     }
+     
+     // Validate product and max_order_quantity
+     const product = await productService.getProduct(cartItem.product_id);
+     if (quantity > product.max_order_quantity) {
+       throw new ValidationError(
+         `Quantity cannot exceed maximum order quantity of ${product.max_order_quantity}`
+       );
+     }
+     
+     // Update item
+     cartItem.quantity = quantity;
+     cartItem.subtotal = quantity * cartItem.price;
+     await this.saveCartItem(cartItem);
+     
+     // NEW SECTION: Automatic recalculation on quantity mutation
+     // MODIFIED: Explicit logic for automatic recalculation of subtotal and total
+     // whenever cart item quantity changes
+     await this.recalculateCartTotals(cartItem.cart_id);
+     
+     return cartItem;
+   }
+   ```
 
+3. **recalculateCartTotals(cartId)** <!-- NEW SECTION -->
+   ```javascript
+   // NEW SECTION: Automatic recalculation logic
+   // This method ensures subtotal and total are recalculated on every quantity mutation
+   async recalculateCartTotals(cartId) {
+     const cart = await this.getCartById(cartId);
+     const items = await this.getCartItems(cartId);
+     
+     // Recalculate each item's subtotal
+     for (const item of items) {
+       item.subtotal = item.quantity * item.price;
+       await this.saveCartItem(item);
+     }
+     
+     // Recalculate cart total
+     const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+     cart.total = total;
+     await this.saveCart(cart);
+     
+     return cart;
+   }
+   ```
+
+4. **removeCartItem(itemId)**
+   ```javascript
+   async removeCartItem(itemId) {
+     const cartItem = await this.getCartItem(itemId);
+     if (!cartItem) {
+       throw new NotFoundError('Cart item not found');
+     }
+     
+     const cartId = cartItem.cart_id;
+     await this.deleteCartItem(itemId);
+     
+     // Recalculate totals after removal
+     await this.recalculateCartTotals(cartId);
+   }
+   ```
+
+5. **getCart(userId)**
+   ```javascript
+   async getCart(userId) {
+     const cart = await this.findCartByUserId(userId);
+     if (!cart) {
+       return null;
+     }
+     
+     const items = await this.getCartItems(cart.id);
+     
+     // Enrich items with product details
+     for (const item of items) {
+       const product = await productService.getProduct(item.product_id);
+       item.product_name = product.name;
+       item.product_image = product.image_url;
+     }
+     
+     cart.items = items;
+     return cart;
+   }
+   ```
+
+6. **clearCart(userId)**
+   ```javascript
+   async clearCart(userId) {
+     const cart = await this.getCart(userId);
+     if (cart) {
+       await this.deleteAllCartItems(cart.id);
+       cart.total = 0;
+       await this.saveCart(cart);
+     }
+   }
+   ```
+
+#### 3.1.3 Product Service Integration
+
+**Purpose**: Retrieve product information for cart operations
+
+**Key Methods**:
+- `getProduct(productId)`: Fetch product details including price, availability, and max_order_quantity
+- `checkAvailability(productId)`: Verify product is in stock
+- `getProductPrice(productId)`: Get current product price
+
+---
+
+### 3.2 Frontend Components
+
+#### 3.2.1 Shopping Cart Component
+
+**Purpose**: Main container component for shopping cart display
+
+**Props**:
+- `userId`: string - Current user identifier
+
+**State**:
+```javascript
+const [cart, setCart] = useState(null);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState(null);
+```
+
+**Component Structure**:
+```jsx
+function ShoppingCart({ userId }) {
+  const [cart, setCart] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
   useEffect(() => {
-    dispatch(fetchCartItems(userId));
-  }, [userId, dispatch]);
-
-  useEffect(() => {
-    calculateTotals();
-  }, [items]);
-
-  const calculateTotals = () => {
-    const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const tax = subtotal * 0.08; // 8% tax
-    const shipping = subtotal > 50 ? 0 : 5.99;
-    const total = subtotal + tax + shipping;
-    setTotals({ subtotal, tax, shipping, total });
+    fetchCart();
+  }, [userId]);
+  
+  const fetchCart = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get(`/api/cart?user_id=${userId}`);
+      setCart(response.data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const handleQuantityUpdate = (itemId: string, quantity: number) => {
-    dispatch(updateCartItem(itemId, quantity));
+  
+  const handleQuantityChange = async (itemId, newQuantity) => {
+    try {
+      await api.put(`/api/cart/items/${itemId}`, { quantity: newQuantity });
+      await fetchCart(); // Refresh cart to show updated totals
+    } catch (err) {
+      setError(err.message);
+    }
   };
-
-  const handleRemoveItem = (itemId: string) => {
-    dispatch(removeCartItem(itemId));
+  
+  const handleRemoveItem = async (itemId) => {
+    try {
+      await api.delete(`/api/cart/items/${itemId}`);
+      await fetchCart();
+    } catch (err) {
+      setError(err.message);
+    }
   };
-
-  if (loading) return <div className="loading-spinner">Loading cart...</div>;
-  if (error) return <div className="error-message">{error}</div>;
-  if (items.length === 0) return <EmptyCart onContinueShopping={onContinueShopping} redirectLink="/products" />;
-
+  
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage message={error} />;
+  
+  // NEW SECTION: Empty Cart View with Redirection Link
+  // MODIFIED: Added explicit UI redirection link in empty cart view
+  if (!cart || cart.items.length === 0) {
+    return (
+      <div className="empty-cart">
+        <h2>Your cart is empty</h2>
+        <p>Add items to your cart to see them here.</p>
+        {/* NEW: Explicit redirection link to continue shopping */}
+        <a href="/products" className="continue-shopping-link">
+          <button className="btn-primary">Continue Shopping</button>
+        </a>
+      </div>
+    );
+  }
+  
   return (
-    <div className="shopping-cart-container">
-      <h2>Shopping Cart</h2>
+    <div className="shopping-cart">
+      <h1>Shopping Cart</h1>
       <div className="cart-items">
-        {items.map(item => (
+        {cart.items.map(item => (
           <CartItem
-            key={item.id}
+            key={item.cart_item_id}
             item={item}
-            onQuantityChange={handleQuantityUpdate}
+            onQuantityChange={handleQuantityChange}
             onRemove={handleRemoveItem}
           />
         ))}
       </div>
-      <CartSummary totals={totals} onCheckout={onCheckout} />
+      <CartSummary total={cart.total} />
+      <div className="cart-actions">
+        <button onClick={() => window.location.href = '/checkout'}>
+          Proceed to Checkout
+        </button>
+      </div>
     </div>
   );
-};
-
-export default ShoppingCart;
+}
 ```
 
-**MODIFICATION APPLIED**: Added explicit UI redirection link in empty cart view to 'continue shopping' by passing `redirectLink="/products"` to the EmptyCart component.
+#### 3.2.2 Cart Item Component
 
----
-
-#### 3.1.2 Cart Item Component
-
-**File**: `src/components/ShoppingCart/CartItem.tsx`
-
-**Purpose**: Displays individual cart item with quantity controls
+**Purpose**: Display individual cart item with quantity controls
 
 **Props**:
-```typescript
-interface CartItemProps {
-  item: CartItem;
-  onQuantityChange: (itemId: string, quantity: number) => void;
-  onRemove: (itemId: string) => void;
-}
+- `item`: object - Cart item data
+- `onQuantityChange`: function - Callback for quantity updates
+- `onRemove`: function - Callback for item removal
 
-interface CartItem {
-  id: string;
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-  imageUrl: string;
-  maxOrderQuantity: number;
-}
-```
-
-**Implementation**:
-```typescript
-import React, { useState } from 'react';
-import './CartItem.css';
-
-const CartItem: React.FC<CartItemProps> = ({ item, onQuantityChange, onRemove }) => {
+**Component Structure**: <!-- MODIFIED: Added max_order_quantity validation -->
+```jsx
+function CartItem({ item, onQuantityChange, onRemove }) {
   const [quantity, setQuantity] = useState(item.quantity);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleQuantityChange = (newQuantity: number) => {
-    // MODIFICATION APPLIED: Add UI validation and alert to prevent quantity input exceeding max_order_quantity
-    if (newQuantity > item.maxOrderQuantity) {
-      setError(`Quantity cannot exceed maximum order limit of ${item.maxOrderQuantity}`);
-      alert(`Error: Maximum order quantity for this item is ${item.maxOrderQuantity}. Please enter a valid quantity.`);
+  const [error, setError] = useState(null);
+  const [maxQuantity, setMaxQuantity] = useState(null);
+  
+  // NEW: Fetch product max_order_quantity
+  useEffect(() => {
+    fetchProductDetails();
+  }, [item.product_id]);
+  
+  const fetchProductDetails = async () => {
+    try {
+      const response = await api.get(`/api/products/${item.product_id}`);
+      setMaxQuantity(response.data.max_order_quantity);
+    } catch (err) {
+      console.error('Failed to fetch product details:', err);
+    }
+  };
+  
+  // MODIFIED: Added UI validation to prevent exceeding max_order_quantity
+  const handleQuantityChange = (newQuantity) => {
+    setError(null);
+    
+    // NEW: Validate against max_order_quantity
+    if (maxQuantity && newQuantity > maxQuantity) {
+      setError(`Quantity cannot exceed maximum order quantity of ${maxQuantity}`);
       return;
     }
     
@@ -240,1291 +512,395 @@ const CartItem: React.FC<CartItemProps> = ({ item, onQuantityChange, onRemove })
       return;
     }
     
-    setError(null);
     setQuantity(newQuantity);
-    onQuantityChange(item.id, newQuantity);
   };
-
-  const incrementQuantity = () => {
-    handleQuantityChange(quantity + 1);
-  };
-
-  const decrementQuantity = () => {
-    if (quantity > 1) {
-      handleQuantityChange(quantity - 1);
+  
+  const handleUpdate = async () => {
+    try {
+      await onQuantityChange(item.cart_item_id, quantity);
+      setError(null);
+    } catch (err) {
+      // NEW: Display appropriate error message for max_order_quantity violation
+      if (err.response?.status === 400) {
+        setError(err.response.data.message);
+      } else {
+        setError('Failed to update quantity');
+      }
     }
   };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value, 10);
-    if (!isNaN(value)) {
-      handleQuantityChange(value);
-    }
-  };
-
+  
   return (
     <div className="cart-item">
-      <img src={item.imageUrl} alt={item.name} className="item-image" />
+      <img src={item.product_image} alt={item.product_name} />
       <div className="item-details">
-        <h3>{item.name}</h3>
-        <p className="item-price">${item.price.toFixed(2)}</p>
+        <h3>{item.product_name}</h3>
+        <p className="price">${item.price.toFixed(2)}</p>
       </div>
       <div className="quantity-controls">
-        <button onClick={decrementQuantity} disabled={quantity <= 1}>-</button>
+        <button 
+          onClick={() => handleQuantityChange(quantity - 1)}
+          disabled={quantity <= 1}
+        >
+          -
+        </button>
         <input
           type="number"
           value={quantity}
-          onChange={handleInputChange}
+          onChange={(e) => handleQuantityChange(parseInt(e.target.value))}
           min="1"
-          max={item.maxOrderQuantity}
+          max={maxQuantity || undefined} {/* NEW: Set max attribute */}
         />
-        <button onClick={incrementQuantity}>+</button>
+        <button 
+          onClick={() => handleQuantityChange(quantity + 1)}
+          disabled={maxQuantity && quantity >= maxQuantity} {/* NEW: Disable if at max */}
+        >
+          +
+        </button>
+        <button onClick={handleUpdate}>Update</button>
       </div>
-      {error && <div className="error-message">{error}</div>}
-      <div className="item-total">
-        <p>${(item.price * quantity).toFixed(2)}</p>
+      {/* NEW: Display error alert for max_order_quantity violations */}
+      {error && (
+        <div className="error-alert" role="alert">
+          {error}
+        </div>
+      )}
+      {/* NEW: Display max quantity info */}
+      {maxQuantity && (
+        <div className="max-quantity-info">
+          Maximum order quantity: {maxQuantity}
+        </div>
+      )}
+      <div className="item-subtotal">
+        <p>Subtotal: ${item.subtotal.toFixed(2)}</p>
       </div>
-      <button onClick={() => onRemove(item.id)} className="remove-button">
+      <button 
+        className="remove-button"
+        onClick={() => onRemove(item.cart_item_id)}
+      >
         Remove
       </button>
     </div>
   );
-};
-
-export default CartItem;
-```
-
----
-
-#### 3.1.3 Cart Summary Component
-
-**File**: `src/components/ShoppingCart/CartSummary.tsx`
-
-**Purpose**: Displays cart totals and checkout button
-
-**Props**:
-```typescript
-interface CartSummaryProps {
-  totals: {
-    subtotal: number;
-    tax: number;
-    shipping: number;
-    total: number;
-  };
-  onCheckout: () => void;
 }
 ```
 
-**Implementation**:
-```typescript
-import React from 'react';
-import './CartSummary.css';
+#### 3.2.3 Cart Summary Component
 
-const CartSummary: React.FC<CartSummaryProps> = ({ totals, onCheckout }) => {
+**Purpose**: Display cart total and summary information
+
+**Props**:
+- `total`: number - Cart total amount
+
+**Component Structure**:
+```jsx
+function CartSummary({ total }) {
   return (
     <div className="cart-summary">
-      <h3>Order Summary</h3>
+      <h2>Order Summary</h2>
       <div className="summary-row">
         <span>Subtotal:</span>
-        <span>${totals.subtotal.toFixed(2)}</span>
-      </div>
-      <div className="summary-row">
-        <span>Tax:</span>
-        <span>${totals.tax.toFixed(2)}</span>
+        <span>${total.toFixed(2)}</span>
       </div>
       <div className="summary-row">
         <span>Shipping:</span>
-        <span>{totals.shipping === 0 ? 'FREE' : `$${totals.shipping.toFixed(2)}`}</span>
+        <span>Calculated at checkout</span>
       </div>
       <div className="summary-row total">
         <span>Total:</span>
-        <span>${totals.total.toFixed(2)}</span>
+        <span>${total.toFixed(2)}</span>
       </div>
-      <button onClick={onCheckout} className="checkout-button">
-        Proceed to Checkout
-      </button>
     </div>
   );
-};
-
-export default CartSummary;
-```
-
----
-
-#### 3.1.4 Empty Cart Component
-
-**File**: `src/components/ShoppingCart/EmptyCart.tsx`
-
-**Purpose**: Displays message when cart is empty
-
-**Props**:
-```typescript
-interface EmptyCartProps {
-  onContinueShopping: () => void;
-  redirectLink?: string;
 }
-```
-
-**Implementation**:
-```typescript
-import React from 'react';
-import { Link } from 'react-router-dom';
-import './EmptyCart.css';
-
-const EmptyCart: React.FC<EmptyCartProps> = ({ onContinueShopping, redirectLink = '/products' }) => {
-  return (
-    <div className="empty-cart">
-      <div className="empty-cart-icon">🛒</div>
-      <h2>Your cart is empty</h2>
-      <p>Add some items to get started!</p>
-      <Link to={redirectLink} className="continue-shopping-link">
-        <button onClick={onContinueShopping} className="continue-shopping-button">
-          Continue Shopping
-        </button>
-      </Link>
-    </div>
-  );
-};
-
-export default EmptyCart;
-```
-
----
-
-### 3.2 Backend Components
-
-#### 3.2.1 Shopping Cart Controller
-
-**File**: `src/controllers/cartController.js`
-
-**Purpose**: Handles HTTP requests for cart operations
-
-**Endpoints**:
-- `GET /api/cart/:userId` - Get user's cart
-- `POST /api/cart/items` - Add item to cart
-- `PUT /api/cart/items/:itemId` - Update item quantity
-- `DELETE /api/cart/items/:itemId` - Remove item from cart
-- `DELETE /api/cart/:userId` - Clear entire cart
-
-**Implementation**:
-```javascript
-const CartService = require('../services/cartService');
-const ProductService = require('../services/productService');
-const { validateCartItem, validateQuantityUpdate } = require('../validators/cartValidator');
-const logger = require('../utils/logger');
-
-class CartController {
-  /**
-   * Get user's shopping cart
-   * @route GET /api/cart/:userId
-   */
-  async getCart(req, res) {
-    try {
-      const { userId } = req.params;
-      
-      logger.info(`Fetching cart for user: ${userId}`);
-      const cart = await CartService.getCartByUserId(userId);
-      
-      if (!cart) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cart not found'
-        });
-      }
-      
-      return res.status(200).json({
-        success: true,
-        data: cart
-      });
-    } catch (error) {
-      logger.error('Error fetching cart:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch cart',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Add item to cart
-   * @route POST /api/cart/items
-   */
-  async addItem(req, res) {
-    try {
-      const { userId, productId, quantity } = req.body;
-      
-      // Validate input
-      const validation = validateCartItem(req.body);
-      if (!validation.isValid) {
-        return res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: validation.errors
-        });
-      }
-      
-      // Check product availability
-      const product = await ProductService.getProductById(productId);
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: 'Product not found'
-        });
-      }
-      
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          success: false,
-          message: 'Insufficient stock'
-        });
-      }
-      
-      // Add item to cart
-      const cartItem = await CartService.addItemToCart(userId, productId, quantity);
-      
-      logger.info(`Item added to cart: ${cartItem.id}`);
-      return res.status(201).json({
-        success: true,
-        message: 'Item added to cart',
-        data: cartItem
-      });
-    } catch (error) {
-      logger.error('Error adding item to cart:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to add item to cart',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Update cart item quantity
-   * @route PUT /api/cart/items/:itemId
-   */
-  async updateItemQuantity(req, res) {
-    try {
-      const { itemId } = req.params;
-      const { quantity } = req.body;
-      
-      // Validate quantity
-      const validation = validateQuantityUpdate({ quantity });
-      if (!validation.isValid) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid quantity',
-          errors: validation.errors
-        });
-      }
-      
-      // Get cart item to check product details
-      const cartItem = await CartService.getCartItemById(itemId);
-      if (!cartItem) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cart item not found'
-        });
-      }
-      
-      // MODIFICATION APPLIED: Validate that updated quantity does not exceed product's max_order_quantity
-      const product = await ProductService.getProductById(cartItem.productId);
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: 'Product not found'
-        });
-      }
-      
-      if (quantity > product.maxOrderQuantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Quantity exceeds maximum order limit of ${product.maxOrderQuantity} for this product`
-        });
-      }
-      
-      // Check stock availability
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          success: false,
-          message: 'Insufficient stock'
-        });
-      }
-      
-      // Update quantity
-      const updatedItem = await CartService.updateItemQuantity(itemId, quantity);
-      
-      logger.info(`Cart item quantity updated: ${itemId}`);
-      return res.status(200).json({
-        success: true,
-        message: 'Quantity updated',
-        data: updatedItem
-      });
-    } catch (error) {
-      logger.error('Error updating cart item quantity:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to update quantity',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Remove item from cart
-   * @route DELETE /api/cart/items/:itemId
-   */
-  async removeItem(req, res) {
-    try {
-      const { itemId } = req.params;
-      
-      await CartService.removeItemFromCart(itemId);
-      
-      logger.info(`Item removed from cart: ${itemId}`);
-      return res.status(200).json({
-        success: true,
-        message: 'Item removed from cart'
-      });
-    } catch (error) {
-      logger.error('Error removing item from cart:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to remove item',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Clear entire cart
-   * @route DELETE /api/cart/:userId
-   */
-  async clearCart(req, res) {
-    try {
-      const { userId } = req.params;
-      
-      await CartService.clearCart(userId);
-      
-      logger.info(`Cart cleared for user: ${userId}`);
-      return res.status(200).json({
-        success: true,
-        message: 'Cart cleared'
-      });
-    } catch (error) {
-      logger.error('Error clearing cart:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to clear cart',
-        error: error.message
-      });
-    }
-  }
-}
-
-module.exports = new CartController();
-```
-
----
-
-#### 3.2.2 Shopping Cart Service
-
-**File**: `src/services/cartService.js`
-
-**Purpose**: Business logic for cart operations
-
-**Implementation**:
-```javascript
-const Cart = require('../models/Cart');
-const CartItem = require('../models/CartItem');
-const Product = require('../models/Product');
-const redisClient = require('../config/redis');
-const { publishEvent } = require('../utils/messageQueue');
-const logger = require('../utils/logger');
-
-class CartService {
-  /**
-   * Get cart by user ID
-   */
-  async getCartByUserId(userId) {
-    try {
-      // Check cache first
-      const cacheKey = `cart:${userId}`;
-      const cachedCart = await redisClient.get(cacheKey);
-      
-      if (cachedCart) {
-        logger.info(`Cart retrieved from cache for user: ${userId}`);
-        return JSON.parse(cachedCart);
-      }
-      
-      // Fetch from database
-      const cart = await Cart.findOne({
-        where: { userId },
-        include: [{
-          model: CartItem,
-          as: 'items',
-          include: [{
-            model: Product,
-            as: 'product'
-          }]
-        }]
-      });
-      
-      if (cart) {
-        // Cache the result
-        await redisClient.setex(cacheKey, 3600, JSON.stringify(cart));
-      }
-      
-      return cart;
-    } catch (error) {
-      logger.error('Error fetching cart:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get cart item by ID
-   */
-  async getCartItemById(itemId) {
-    try {
-      const cartItem = await CartItem.findByPk(itemId, {
-        include: [{
-          model: Product,
-          as: 'product'
-        }]
-      });
-      return cartItem;
-    } catch (error) {
-      logger.error('Error fetching cart item:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Add item to cart
-   */
-  async addItemToCart(userId, productId, quantity) {
-    try {
-      // Get or create cart
-      let cart = await Cart.findOne({ where: { userId } });
-      
-      if (!cart) {
-        cart = await Cart.create({ userId });
-      }
-      
-      // Check if item already exists in cart
-      let cartItem = await CartItem.findOne({
-        where: {
-          cartId: cart.id,
-          productId
-        }
-      });
-      
-      if (cartItem) {
-        // Update quantity
-        cartItem.quantity += quantity;
-        await cartItem.save();
-      } else {
-        // Create new cart item
-        cartItem = await CartItem.create({
-          cartId: cart.id,
-          productId,
-          quantity
-        });
-      }
-      
-      // Invalidate cache
-      await this.invalidateCartCache(userId);
-      
-      // Publish event
-      await publishEvent('cart.item.added', {
-        userId,
-        productId,
-        quantity,
-        timestamp: new Date()
-      });
-      
-      return cartItem;
-    } catch (error) {
-      logger.error('Error adding item to cart:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Update cart item quantity
-   */
-  async updateItemQuantity(itemId, quantity) {
-    try {
-      const cartItem = await CartItem.findByPk(itemId, {
-        include: [{
-          model: Cart,
-          as: 'cart'
-        }]
-      });
-      
-      if (!cartItem) {
-        throw new Error('Cart item not found');
-      }
-      
-      cartItem.quantity = quantity;
-      await cartItem.save();
-      
-      // MODIFICATION APPLIED: Add explicit logic for recalculation of subtotal and total whenever cart item quantity changes
-      const cart = await this.getCartByUserId(cartItem.cart.userId);
-      const recalculatedTotals = await this.recalculateCartTotals(cart);
-      
-      // Update cart with new totals
-      await Cart.update(
-        {
-          subtotal: recalculatedTotals.subtotal,
-          total: recalculatedTotals.total
-        },
-        {
-          where: { id: cart.id }
-        }
-      );
-      
-      // Invalidate cache
-      await this.invalidateCartCache(cartItem.cart.userId);
-      
-      // Publish event
-      await publishEvent('cart.item.updated', {
-        itemId,
-        quantity,
-        userId: cartItem.cart.userId,
-        subtotal: recalculatedTotals.subtotal,
-        total: recalculatedTotals.total,
-        timestamp: new Date()
-      });
-      
-      return cartItem;
-    } catch (error) {
-      logger.error('Error updating cart item quantity:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Recalculate cart totals
-   */
-  async recalculateCartTotals(cart) {
-    try {
-      let subtotal = 0;
-      
-      for (const item of cart.items) {
-        const product = await Product.findByPk(item.productId);
-        if (product) {
-          subtotal += product.price * item.quantity;
-        }
-      }
-      
-      const tax = subtotal * 0.08; // 8% tax rate
-      const shipping = subtotal > 50 ? 0 : 5.99; // Free shipping over $50
-      const total = subtotal + tax + shipping;
-      
-      return {
-        subtotal,
-        tax,
-        shipping,
-        total
-      };
-    } catch (error) {
-      logger.error('Error recalculating cart totals:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Remove item from cart
-   */
-  async removeItemFromCart(itemId) {
-    try {
-      const cartItem = await CartItem.findByPk(itemId, {
-        include: [{
-          model: Cart,
-          as: 'cart'
-        }]
-      });
-      
-      if (!cartItem) {
-        throw new Error('Cart item not found');
-      }
-      
-      const userId = cartItem.cart.userId;
-      
-      await cartItem.destroy();
-      
-      // Invalidate cache
-      await this.invalidateCartCache(userId);
-      
-      // Publish event
-      await publishEvent('cart.item.removed', {
-        itemId,
-        userId,
-        timestamp: new Date()
-      });
-      
-      return true;
-    } catch (error) {
-      logger.error('Error removing item from cart:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Clear entire cart
-   */
-  async clearCart(userId) {
-    try {
-      const cart = await Cart.findOne({ where: { userId } });
-      
-      if (!cart) {
-        throw new Error('Cart not found');
-      }
-      
-      await CartItem.destroy({ where: { cartId: cart.id } });
-      
-      // Invalidate cache
-      await this.invalidateCartCache(userId);
-      
-      // Publish event
-      await publishEvent('cart.cleared', {
-        userId,
-        timestamp: new Date()
-      });
-      
-      return true;
-    } catch (error) {
-      logger.error('Error clearing cart:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Invalidate cart cache
-   */
-  async invalidateCartCache(userId) {
-    try {
-      const cacheKey = `cart:${userId}`;
-      await redisClient.del(cacheKey);
-      logger.info(`Cart cache invalidated for user: ${userId}`);
-    } catch (error) {
-      logger.error('Error invalidating cart cache:', error);
-      // Don't throw error, just log it
-    }
-  }
-}
-
-module.exports = new CartService();
-```
-
----
-
-#### 3.2.3 Cart Validator
-
-**File**: `src/validators/cartValidator.js`
-
-**Purpose**: Validates cart-related requests
-
-**Implementation**:
-```javascript
-const Joi = require('joi');
-
-class CartValidator {
-  validateCartItem(data) {
-    const schema = Joi.object({
-      userId: Joi.string().uuid().required(),
-      productId: Joi.string().uuid().required(),
-      quantity: Joi.number().integer().min(1).max(100).required()
-    });
-    
-    const { error } = schema.validate(data);
-    
-    if (error) {
-      return {
-        isValid: false,
-        errors: error.details.map(detail => detail.message)
-      };
-    }
-    
-    return { isValid: true };
-  }
-  
-  validateQuantityUpdate(data) {
-    const schema = Joi.object({
-      quantity: Joi.number().integer().min(1).max(100).required()
-    });
-    
-    const { error } = schema.validate(data);
-    
-    if (error) {
-      return {
-        isValid: false,
-        errors: error.details.map(detail => detail.message)
-      };
-    }
-    
-    return { isValid: true };
-  }
-}
-
-module.exports = new CartValidator();
 ```
 
 ---
 
 ## 4. Data Models
 
-### 4.1 Cart Model
+### 4.1 Database Schema
 
-**File**: `src/models/Cart.js`
-
-```javascript
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-
-const Cart = sequelize.define('Cart', {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
-  },
-  userId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    unique: true,
-    references: {
-      model: 'Users',
-      key: 'id'
-    }
-  },
-  subtotal: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0.00
-  },
-  total: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0.00
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
-  }
-}, {
-  tableName: 'carts',
-  timestamps: true
-});
-
-module.exports = Cart;
+#### Cart Table
+```sql
+CREATE TABLE carts (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  total DECIMAL(10, 2) DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  INDEX idx_user_id (user_id)
+);
 ```
 
-### 4.2 CartItem Model
-
-**File**: `src/models/CartItem.js`
-
-```javascript
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-
-const CartItem = sequelize.define('CartItem', {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
-  },
-  cartId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'Carts',
-      key: 'id'
-    }
-  },
-  productId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'Products',
-      key: 'id'
-    }
-  },
-  quantity: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 1,
-    validate: {
-      min: 1
-    }
-  },
-  price: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
-  }
-}, {
-  tableName: 'cart_items',
-  timestamps: true
-});
-
-module.exports = CartItem;
+#### Cart Items Table
+```sql
+CREATE TABLE cart_items (
+  id VARCHAR(36) PRIMARY KEY,
+  cart_id VARCHAR(36) NOT NULL,
+  product_id VARCHAR(36) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  price DECIMAL(10, 2) NOT NULL,
+  subtotal DECIMAL(10, 2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id),
+  INDEX idx_cart_id (cart_id),
+  INDEX idx_product_id (product_id),
+  UNIQUE KEY unique_cart_product (cart_id, product_id)
+);
 ```
 
-### 4.3 Model Associations
+#### Product Table (Reference)
+```sql
+CREATE TABLE products (
+  id VARCHAR(36) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  price DECIMAL(10, 2) NOT NULL,
+  max_order_quantity INT NOT NULL DEFAULT 10,
+  is_available BOOLEAN DEFAULT TRUE,
+  image_url VARCHAR(512),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
 
-**File**: `src/models/index.js`
+### 4.2 Data Transfer Objects (DTOs)
+
+#### CartDTO
+```javascript
+class CartDTO {
+  constructor(cart, items) {
+    this.cart_id = cart.id;
+    this.user_id = cart.user_id;
+    this.items = items.map(item => new CartItemDTO(item));
+    this.total = cart.total;
+    this.created_at = cart.created_at;
+    this.updated_at = cart.updated_at;
+  }
+}
+```
+
+#### CartItemDTO
+```javascript
+class CartItemDTO {
+  constructor(item) {
+    this.cart_item_id = item.id;
+    this.product_id = item.product_id;
+    this.product_name = item.product_name;
+    this.product_image = item.product_image;
+    this.quantity = item.quantity;
+    this.price = item.price;
+    this.subtotal = item.subtotal;
+  }
+}
+```
+
+---
+
+## 5. Data Flow
+
+### 5.1 Add Item to Cart Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI
+    participant Controller
+    participant CartService
+    participant ProductService
+    participant Database
+    
+    User->>UI: Click "Add to Cart"
+    UI->>Controller: POST /api/cart/items
+    Controller->>ProductService: getProduct(productId)
+    ProductService->>Database: SELECT product
+    Database-->>ProductService: Product data
+    ProductService-->>Controller: Product details
+    Controller->>Controller: Validate max_order_quantity
+    Controller->>CartService: addItemToCart()
+    CartService->>Database: INSERT/UPDATE cart_item
+    CartService->>CartService: recalculateCartTotals()
+    CartService->>Database: UPDATE cart totals
+    Database-->>CartService: Success
+    CartService-->>Controller: Updated cart
+    Controller-->>UI: 201 Created
+    UI-->>User: Show success message
+```
+
+### 5.2 Update Quantity Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI
+    participant Controller
+    participant CartService
+    participant ProductService
+    participant Database
+    
+    User->>UI: Change quantity
+    UI->>UI: Validate against max_order_quantity
+    UI->>Controller: PUT /api/cart/items/{id}
+    Controller->>ProductService: getProduct(productId)
+    ProductService-->>Controller: Product with max_order_quantity
+    Controller->>Controller: Validate quantity <= max_order_quantity
+    Controller->>CartService: updateCartItem()
+    CartService->>Database: UPDATE cart_item
+    CartService->>CartService: recalculateCartTotals()
+    CartService->>Database: UPDATE cart totals
+    Database-->>CartService: Success
+    CartService-->>Controller: Updated item
+    Controller-->>UI: 200 OK
+    UI-->>User: Show updated cart
+```
+
+---
+
+## 6. Error Handling
+
+### 6.1 Error Types and Responses
+
+#### Validation Errors (400 Bad Request)
+```json
+{
+  "error": "ValidationError",
+  "message": "Quantity cannot exceed maximum order quantity of 10",
+  "field": "quantity",
+  "code": "MAX_QUANTITY_EXCEEDED"
+}
+```
+
+#### Not Found Errors (404 Not Found)
+```json
+{
+  "error": "NotFoundError",
+  "message": "Product not found",
+  "code": "PRODUCT_NOT_FOUND"
+}
+```
+
+#### Server Errors (500 Internal Server Error)
+```json
+{
+  "error": "InternalServerError",
+  "message": "An unexpected error occurred",
+  "code": "INTERNAL_ERROR"
+}
+```
+
+### 6.2 Frontend Error Handling
 
 ```javascript
-const Cart = require('./Cart');
-const CartItem = require('./CartItem');
-const Product = require('./Product');
-const User = require('./User');
-
-// Cart - User relationship
-Cart.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-User.hasOne(Cart, { foreignKey: 'userId', as: 'cart' });
-
-// Cart - CartItem relationship
-Cart.hasMany(CartItem, { foreignKey: 'cartId', as: 'items' });
-CartItem.belongsTo(Cart, { foreignKey: 'cartId', as: 'cart' });
-
-// CartItem - Product relationship
-CartItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
-Product.hasMany(CartItem, { foreignKey: 'productId', as: 'cartItems' });
-
-module.exports = {
-  Cart,
-  CartItem,
-  Product,
-  User
+const handleApiError = (error) => {
+  if (error.response) {
+    // Server responded with error status
+    const { status, data } = error.response;
+    
+    switch (status) {
+      case 400:
+        showValidationError(data.message);
+        break;
+      case 404:
+        showNotFoundError(data.message);
+        break;
+      case 500:
+        showServerError();
+        break;
+      default:
+        showGenericError();
+    }
+  } else if (error.request) {
+    // Request made but no response
+    showNetworkError();
+  } else {
+    // Error in request setup
+    showGenericError();
+  }
 };
 ```
 
 ---
 
-## 5. API Specifications
+## 7. Validation Rules
 
-### 5.1 Get Cart
+### 7.1 Backend Validation
 
-**Endpoint**: `GET /api/cart/:userId`
+1. **Product Validation**
+   - Product must exist in database
+   - Product must be available (is_available = true)
+   - Product must have valid price > 0
 
-**Description**: Retrieves the shopping cart for a specific user
+2. **Quantity Validation**
+   - Quantity must be integer > 0
+   - Quantity must not exceed product's max_order_quantity (enforced on add AND update)
+   - Total quantity in cart for a product must not exceed max_order_quantity
 
-**Request Parameters**:
-- `userId` (path parameter): UUID of the user
+3. **Cart Validation**
+   - User must be authenticated
+   - Cart must belong to requesting user
+   - Cart item must exist for update/delete operations
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": "cart-uuid",
-    "userId": "user-uuid",
-    "items": [
-      {
-        "id": "item-uuid",
-        "productId": "product-uuid",
-        "name": "Product Name",
-        "price": 29.99,
-        "quantity": 2,
-        "imageUrl": "https://example.com/image.jpg",
-        "maxOrderQuantity": 10
-      }
-    ],
-    "subtotal": 59.98,
-    "tax": 4.80,
-    "shipping": 0.00,
-    "total": 64.78,
-    "createdAt": "2024-01-15T10:00:00Z",
-    "updatedAt": "2024-01-15T10:30:00Z"
-  }
-}
-```
+### 7.2 Frontend Validation
 
-### 5.2 Add Item to Cart
+1. **Input Validation**
+   - Quantity input must be positive integer
+   - Quantity cannot exceed max_order_quantity (with UI alert)
+   - Disable increment button when at max_order_quantity
+   - Show error message for invalid inputs
 
-**Endpoint**: `POST /api/cart/items`
-
-**Description**: Adds a new item to the cart or updates quantity if item exists
-
-**Request Body**:
-```json
-{
-  "userId": "user-uuid",
-  "productId": "product-uuid",
-  "quantity": 1
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Item added to cart",
-  "data": {
-    "id": "item-uuid",
-    "cartId": "cart-uuid",
-    "productId": "product-uuid",
-    "quantity": 1,
-    "price": 29.99,
-    "createdAt": "2024-01-15T10:00:00Z"
-  }
-}
-```
-
-### 5.3 Update Item Quantity
-
-**Endpoint**: `PUT /api/cart/items/:itemId`
-
-**Description**: Updates the quantity of a cart item
-
-**Request Parameters**:
-- `itemId` (path parameter): UUID of the cart item
-
-**Request Body**:
-```json
-{
-  "quantity": 3
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Quantity updated",
-  "data": {
-    "id": "item-uuid",
-    "cartId": "cart-uuid",
-    "productId": "product-uuid",
-    "quantity": 3,
-    "price": 29.99,
-    "updatedAt": "2024-01-15T10:30:00Z"
-  }
-}
-```
-
-### 5.4 Remove Item from Cart
-
-**Endpoint**: `DELETE /api/cart/items/:itemId`
-
-**Description**: Removes an item from the cart
-
-**Request Parameters**:
-- `itemId` (path parameter): UUID of the cart item
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Item removed from cart"
-}
-```
-
-### 5.5 Clear Cart
-
-**Endpoint**: `DELETE /api/cart/:userId`
-
-**Description**: Removes all items from the user's cart
-
-**Request Parameters**:
-- `userId` (path parameter): UUID of the user
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Cart cleared"
-}
-```
+2. **User Feedback**
+   - Show loading states during API calls
+   - Display success messages for completed actions
+   - Show error alerts for validation failures
+   - Display max_order_quantity information to users
 
 ---
 
-## 6. Database Schema
+## 8. Performance Considerations
 
-### 6.1 Carts Table
+### 8.1 Database Optimization
 
-```sql
-CREATE TABLE carts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL UNIQUE,
-  subtotal DECIMAL(10, 2) DEFAULT 0.00,
-  total DECIMAL(10, 2) DEFAULT 0.00,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+1. **Indexing**
+   - Index on cart.user_id for fast cart lookup
+   - Index on cart_items.cart_id for efficient item queries
+   - Composite unique index on (cart_id, product_id) to prevent duplicates
 
-CREATE INDEX idx_carts_user_id ON carts(user_id);
-```
+2. **Query Optimization**
+   - Use JOIN queries to fetch cart with items in single query
+   - Implement pagination for large carts (if needed)
+   - Cache product details to reduce database calls
 
-### 6.2 Cart Items Table
+3. **Connection Pooling**
+   - Configure database connection pool for concurrent requests
+   - Set appropriate pool size based on expected load
 
-```sql
-CREATE TABLE cart_items (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  cart_id UUID NOT NULL,
-  product_id UUID NOT NULL,
-  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
-  price DECIMAL(10, 2) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-  UNIQUE(cart_id, product_id)
-);
+### 8.2 API Performance
 
-CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
-CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
-```
+1. **Response Time Targets**
+   - GET cart: < 200ms
+   - POST add item: < 300ms
+   - PUT update quantity: < 250ms
+   - DELETE remove item: < 200ms
 
-### 6.3 Products Table (Reference)
+2. **Caching Strategy**
+   - Cache product details (price, availability, max_order_quantity) with TTL
+   - Invalidate cart cache on updates
+   - Use Redis for session-based cart caching
 
-```sql
-CREATE TABLE products (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  price DECIMAL(10, 2) NOT NULL,
-  stock INTEGER NOT NULL DEFAULT 0,
-  max_order_quantity INTEGER NOT NULL DEFAULT 10,
-  image_url VARCHAR(500),
-  category_id UUID,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+### 8.3 Frontend Performance
 
-CREATE INDEX idx_products_category_id ON products(category_id);
-CREATE INDEX idx_products_is_active ON products(is_active);
-```
+1. **Rendering Optimization**
+   - Use React.memo for CartItem components
+   - Implement debouncing for quantity input changes
+   - Lazy load product images
 
----
-
-## 7. Sequence Diagrams
-
-### 7.1 Add Item to Cart Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant API Gateway
-    participant Cart Controller
-    participant Cart Service
-    participant Product Service
-    participant Database
-    participant Redis Cache
-    participant RabbitMQ
-    
-    User->>Frontend: Click "Add to Cart"
-    Frontend->>API Gateway: POST /api/cart/items
-    API Gateway->>Cart Controller: Forward request
-    Cart Controller->>Cart Controller: Validate input
-    Cart Controller->>Product Service: Check product availability
-    Product Service->>Database: Query product
-    Database-->>Product Service: Product data
-    Product Service-->>Cart Controller: Product available
-    Cart Controller->>Cart Service: Add item to cart
-    Cart Service->>Database: Check existing cart
-    Database-->>Cart Service: Cart data
-    Cart Service->>Database: Insert/Update cart item
-    Database-->>Cart Service: Success
-    Cart Service->>Redis Cache: Invalidate cart cache
-    Cart Service->>RabbitMQ: Publish cart.item.added event
-    Cart Service-->>Cart Controller: Cart item created
-    Cart Controller-->>API Gateway: Success response
-    API Gateway-->>Frontend: Cart updated
-    Frontend-->>User: Show success message
-```
-
-### 7.2 Update Item Quantity Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant API Gateway
-    participant Cart Controller
-    participant Cart Service
-    participant Product Service
-    participant Database
-    participant Redis Cache
-    
-    User->>Frontend: Change quantity
-    Frontend->>Frontend: Validate max_order_quantity
-    alt Quantity exceeds limit
-        Frontend-->>User: Show error alert
-    else Valid quantity
-        Frontend->>API Gateway: PUT /api/cart/items/:itemId
-        API Gateway->>Cart Controller: Forward request
-        Cart Controller->>Cart Controller: Validate quantity
-        Cart Controller->>Cart Service: Get cart item
-        Cart Service->>Database: Query cart item
-        Database-->>Cart Service: Cart item data
-        Cart Service-->>Cart Controller: Cart item
-        Cart Controller->>Product Service: Get product details
-        Product Service->>Database: Query product
-        Database-->>Product Service: Product data
-        Product Service-->>Cart Controller: Product with max_order_quantity
-        Cart Controller->>Cart Controller: Validate against max_order_quantity
-        alt Exceeds max_order_quantity
-            Cart Controller-->>API Gateway: Error response
-            API Gateway-->>Frontend: Validation error
-            Frontend-->>User: Show error message
-        else Valid update
-            Cart Controller->>Cart Service: Update quantity
-            Cart Service->>Database: Update cart item
-            Database-->>Cart Service: Success
-            Cart Service->>Cart Service: Recalculate totals
-            Cart Service->>Database: Update cart totals
-            Cart Service->>Redis Cache: Invalidate cache
-            Cart Service-->>Cart Controller: Updated item
-            Cart Controller-->>API Gateway: Success response
-            API Gateway-->>Frontend: Quantity updated
-            Frontend-->>User: Show updated cart
-        end
-    end
-```
-
-### 7.3 Checkout Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant API Gateway
-    participant Cart Service
-    participant Order Service
-    participant Payment Service
-    participant Inventory Service
-    participant Database
-    
-    User->>Frontend: Click "Checkout"
-    Frontend->>API Gateway: GET /api/cart/:userId
-    API Gateway->>Cart Service: Get cart
-    Cart Service->>Database: Query cart with items
-    Database-->>Cart Service: Cart data
-    Cart Service-->>API Gateway: Cart details
-    API Gateway-->>Frontend: Cart summary
-    Frontend-->>User: Show checkout page
-    User->>Frontend: Confirm order
-    Frontend->>API Gateway: POST /api/orders
-    API Gateway->>Order Service: Create order
-    Order Service->>Inventory Service: Reserve items
-    Inventory Service-->>Order Service: Items reserved
-    Order Service->>Payment Service: Process payment
-    Payment Service-->>Order Service: Payment successful
-    Order Service->>Database: Create order
-    Database-->>Order Service: Order created
-    Order Service->>Cart Service: Clear cart
-    Cart Service->>Database: Delete cart items
-    Database-->>Cart Service: Success
-    Cart Service-->>Order Service: Cart cleared
-    Order Service-->>API Gateway: Order confirmation
-    API Gateway-->>Frontend: Order success
-    Frontend-->>User: Show order confirmation
-```
-
----
-
-## 8. Error Handling
-
-### 8.1 Error Response Format
-
-All API errors follow a consistent format:
-
-```json
-{
-  "success": false,
-  "message": "Error description",
-  "error": "Detailed error message",
-  "code": "ERROR_CODE",
-  "timestamp": "2024-01-15T10:00:00Z"
-}
-```
-
-### 8.2 Error Codes
-
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| CART_NOT_FOUND | 404 | Cart does not exist for user |
-| ITEM_NOT_FOUND | 404 | Cart item not found |
-| PRODUCT_NOT_FOUND | 404 | Product does not exist |
-| INVALID_QUANTITY | 400 | Quantity is invalid or out of range |
-| INSUFFICIENT_STOCK | 400 | Product stock is insufficient |
-| MAX_QUANTITY_EXCEEDED | 400 | Quantity exceeds maximum order limit |
-| VALIDATION_ERROR | 400 | Request validation failed |
-| UNAUTHORIZED | 401 | User is not authenticated |
-| FORBIDDEN | 403 | User does not have permission |
-| INTERNAL_ERROR | 500 | Internal server error |
-| DATABASE_ERROR | 500 | Database operation failed |
-| CACHE_ERROR | 500 | Cache operation failed |
-
-### 8.3 Error Handling Implementation
-
-**File**: `src/middleware/errorHandler.js`
-
-```javascript
-const logger = require('../utils/logger');
-
-class ErrorHandler {
-  handle(err, req, res, next) {
-    logger.error('Error occurred:', {
-      error: err.message,
-      stack: err.stack,
-      path: req.path,
-      method: req.method,
-      body: req.body
-    });
-    
-    // Default error
-    let statusCode = 500;
-    let errorCode = 'INTERNAL_ERROR';
-    let message = 'An unexpected error occurred';
-    
-    // Handle specific error types
-    if (err.name === 'ValidationError') {
-      statusCode = 400;
-      errorCode = 'VALIDATION_ERROR';
-      message = err.message;
-    } else if (err.name === 'NotFoundError') {
-      statusCode = 404;
-      errorCode = err.code || 'NOT_FOUND';
-      message = err.message;
-    } else if (err.name === 'UnauthorizedError') {
-      statusCode = 401;
-      errorCode = 'UNAUTHORIZED';
-      message = 'Authentication required';
-    } else if (err.name === 'ForbiddenError') {
-      statusCode = 403;
-      errorCode = 'FORBIDDEN';
-      message = 'Access denied';
-    }
-    
-    res.status(statusCode).json({
-      success: false,
-      message,
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
-      code: errorCode,
-      timestamp: new Date().toISOString()
-    });
-  }
-}
-
-module.exports = new ErrorHandler();
-```
+2. **State Management**
+   - Minimize unnecessary re-renders
+   - Use local state for UI-only changes
+   - Batch API calls when possible
 
 ---
 
@@ -1532,241 +908,425 @@ module.exports = new ErrorHandler();
 
 ### 9.1 Authentication & Authorization
 
-- All cart endpoints require valid JWT authentication
-- Users can only access their own cart
-- Admin users can view any cart for support purposes
+1. **User Authentication**
+   - Require valid JWT token for all cart operations
+   - Validate token on every request
+   - Implement token refresh mechanism
 
-**Middleware**: `src/middleware/auth.js`
+2. **Authorization**
+   - Verify user owns the cart being accessed
+   - Prevent users from modifying other users' carts
+   - Implement role-based access if needed
 
-```javascript
-const jwt = require('jsonwebtoken');
-const logger = require('../utils/logger');
+### 9.2 Input Validation & Sanitization
 
-const authenticate = (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
-    
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    logger.error('Authentication error:', error);
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token'
-    });
-  }
-};
+1. **SQL Injection Prevention**
+   - Use parameterized queries/prepared statements
+   - Never concatenate user input into SQL queries
+   - Validate all input types and formats
 
-const authorizeCartAccess = (req, res, next) => {
-  const { userId } = req.params;
-  
-  if (req.user.id !== userId && req.user.role !== 'admin') {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied'
-    });
-  }
-  
-  next();
-};
+2. **XSS Prevention**
+   - Sanitize all user inputs
+   - Escape output in frontend rendering
+   - Use Content Security Policy headers
 
-module.exports = { authenticate, authorizeCartAccess };
-```
+3. **CSRF Protection**
+   - Implement CSRF tokens for state-changing operations
+   - Validate origin headers
+   - Use SameSite cookie attributes
 
-### 9.2 Input Validation
+### 9.3 Data Protection
 
-- All inputs are validated using Joi schemas
-- SQL injection prevention through parameterized queries
-- XSS prevention through input sanitization
+1. **Sensitive Data**
+   - Never log sensitive information
+   - Encrypt data in transit (HTTPS)
+   - Implement rate limiting to prevent abuse
 
-### 9.3 Rate Limiting
-
-**Middleware**: `src/middleware/rateLimit.js`
-
-```javascript
-const rateLimit = require('express-rate-limit');
-
-const cartRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later',
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
-module.exports = { cartRateLimiter };
-```
-
-### 9.4 Data Encryption
-
-- All API communication over HTTPS
-- Sensitive data encrypted at rest
-- JWT tokens for secure session management
+2. **Price Integrity**
+   - Always fetch current price from product service
+   - Never trust client-side price calculations
+   - Validate price consistency before checkout
 
 ---
 
-## 10. Performance Optimization
+## 10. Testing Strategy
 
-### 10.1 Caching Strategy
+### 10.1 Unit Tests
 
-**Redis Cache Implementation**:
+#### Backend Unit Tests
 
-- Cart data cached for 1 hour
-- Cache invalidation on cart updates
-- Cache-aside pattern for read operations
-
+1. **Shopping Cart Service Tests**
 ```javascript
-// Cache configuration
-const CACHE_TTL = 3600; // 1 hour
-const CACHE_PREFIX = 'cart:';
-
-// Cache key generation
-const getCacheKey = (userId) => `${CACHE_PREFIX}${userId}`;
-```
-
-### 10.2 Database Optimization
-
-**Indexes**:
-- `idx_carts_user_id` on carts.user_id
-- `idx_cart_items_cart_id` on cart_items.cart_id
-- `idx_cart_items_product_id` on cart_items.product_id
-
-**Query Optimization**:
-- Use of eager loading for related data
-- Pagination for large result sets
-- Connection pooling
-
-```javascript
-// Database connection pool configuration
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  pool: {
-    max: 20,
-    min: 5,
-    acquire: 30000,
-    idle: 10000
-  },
-  logging: false
+describe('ShoppingCartService', () => {
+  describe('addItemToCart', () => {
+    it('should add item to cart successfully', async () => {
+      // Test implementation
+    });
+    
+    it('should throw error when quantity exceeds max_order_quantity', async () => {
+      // Test max_order_quantity validation
+    });
+    
+    it('should recalculate totals after adding item', async () => {
+      // Test automatic recalculation
+    });
+  });
+  
+  describe('updateCartItem', () => {
+    it('should update quantity successfully', async () => {
+      // Test implementation
+    });
+    
+    it('should validate max_order_quantity on update', async () => {
+      // Test validation on update
+    });
+    
+    it('should automatically recalculate totals on quantity change', async () => {
+      // Test automatic recalculation on mutation
+    });
+  });
+  
+  describe('recalculateCartTotals', () => {
+    it('should recalculate all item subtotals', async () => {
+      // Test subtotal recalculation
+    });
+    
+    it('should recalculate cart total', async () => {
+      // Test total recalculation
+    });
+  });
 });
 ```
 
-### 10.3 API Response Optimization
-
-- Gzip compression enabled
-- Response pagination
-- Field selection to reduce payload size
-
+2. **Shopping Cart Controller Tests**
 ```javascript
-// Compression middleware
-const compression = require('compression');
-app.use(compression());
-```
-
-### 10.4 Asynchronous Processing
-
-**Message Queue Integration**:
-
-- Cart events published to RabbitMQ
-- Asynchronous inventory updates
-- Non-blocking operations
-
-```javascript
-// RabbitMQ configuration
-const amqp = require('amqplib');
-
-class MessageQueue {
-  async connect() {
-    this.connection = await amqp.connect(process.env.RABBITMQ_URL);
-    this.channel = await this.connection.createChannel();
-    await this.channel.assertExchange('cart_events', 'topic', { durable: true });
-  }
-  
-  async publishEvent(eventType, data) {
-    const message = JSON.stringify({
-      type: eventType,
-      data,
-      timestamp: new Date().toISOString()
+describe('ShoppingCartController', () => {
+  describe('POST /api/cart/items', () => {
+    it('should return 201 when item added successfully', async () => {
+      // Test implementation
     });
     
-    this.channel.publish(
-      'cart_events',
-      eventType,
-      Buffer.from(message),
-      { persistent: true }
-    );
-  }
-}
-
-module.exports = new MessageQueue();
+    it('should return 400 when quantity exceeds max_order_quantity', async () => {
+      // Test validation
+    });
+  });
+  
+  describe('PUT /api/cart/items/:id', () => {
+    it('should return 200 when quantity updated successfully', async () => {
+      // Test implementation
+    });
+    
+    it('should return 400 when updated quantity exceeds max_order_quantity', async () => {
+      // Test max_order_quantity validation on update
+    });
+  });
+});
 ```
+
+#### Frontend Unit Tests
+
+1. **Cart Item Component Tests**
+```javascript
+describe('CartItem', () => {
+  it('should render item details correctly', () => {
+    // Test rendering
+  });
+  
+  it('should display error when quantity exceeds max_order_quantity', () => {
+    // Test max_order_quantity validation
+  });
+  
+  it('should disable increment button at max_order_quantity', () => {
+    // Test UI constraint
+  });
+  
+  it('should show max quantity information', () => {
+    // Test info display
+  });
+});
+```
+
+2. **Shopping Cart Component Tests**
+```javascript
+describe('ShoppingCart', () => {
+  it('should display empty cart message with continue shopping link', () => {
+    // Test empty cart view with redirection link
+  });
+  
+  it('should render cart items when cart has items', () => {
+    // Test rendering
+  });
+  
+  it('should refresh cart after quantity update', () => {
+    // Test automatic refresh
+  });
+});
+```
+
+### 10.2 Integration Tests
+
+1. **API Integration Tests**
+   - Test complete add-to-cart flow
+   - Test update quantity with max_order_quantity validation
+   - Test automatic recalculation on mutations
+   - Test remove item flow
+   - Test error scenarios
+
+2. **Database Integration Tests**
+   - Test cart creation and retrieval
+   - Test item addition and updates
+   - Test total recalculation
+   - Test cascade deletes
+
+### 10.3 End-to-End Tests
+
+1. **User Journey Tests**
+   - Add item to cart from product page
+   - Update quantity in cart (within and exceeding max_order_quantity)
+   - Remove item from cart
+   - View empty cart with continue shopping link
+   - Proceed to checkout
+
+2. **Error Scenario Tests**
+   - Handle product not found
+   - Handle max_order_quantity exceeded
+   - Handle network errors
+   - Handle authentication failures
 
 ---
 
-## Appendix
+## 11. Deployment
 
-### A. Environment Variables
+### 11.1 Environment Configuration
 
+#### Development
 ```env
-# Server Configuration
-PORT=3000
-NODE_ENV=production
-
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/ecommerce
-
-# Redis
+NODE_ENV=development
+DATABASE_URL=postgresql://localhost:5432/cart_dev
 REDIS_URL=redis://localhost:6379
-
-# RabbitMQ
-RABBITMQ_URL=amqp://localhost:5672
-
-# JWT
-JWT_SECRET=your-secret-key
-JWT_EXPIRY=24h
-
-# API
-API_VERSION=v1
-API_PREFIX=/api
+JWT_SECRET=dev_secret_key
+API_PORT=3000
 ```
 
-### B. Testing Strategy
+#### Production
+```env
+NODE_ENV=production
+DATABASE_URL=postgresql://prod-db:5432/cart_prod
+REDIS_URL=redis://prod-redis:6379
+JWT_SECRET=${SECURE_JWT_SECRET}
+API_PORT=8080
+```
 
-**Unit Tests**: Test individual functions and methods
-**Integration Tests**: Test API endpoints and database interactions
-**E2E Tests**: Test complete user flows
+### 11.2 Database Migration
 
-**Test Coverage Target**: 80%
+```sql
+-- Migration: Create cart tables
+-- Version: 001
+-- Date: 2024-01-15
 
-### C. Deployment Considerations
+BEGIN;
 
-- Docker containerization
-- Kubernetes orchestration
-- CI/CD pipeline with GitHub Actions
-- Blue-green deployment strategy
-- Health check endpoints
-- Monitoring with Prometheus and Grafana
+CREATE TABLE IF NOT EXISTS carts (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  total DECIMAL(10, 2) DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  INDEX idx_user_id (user_id)
+);
 
-### D. API Documentation
+CREATE TABLE IF NOT EXISTS cart_items (
+  id VARCHAR(36) PRIMARY KEY,
+  cart_id VARCHAR(36) NOT NULL,
+  product_id VARCHAR(36) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  price DECIMAL(10, 2) NOT NULL,
+  subtotal DECIMAL(10, 2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id),
+  INDEX idx_cart_id (cart_id),
+  INDEX idx_product_id (product_id),
+  UNIQUE KEY unique_cart_product (cart_id, product_id)
+);
 
-Complete API documentation available at:
-- Swagger UI: `/api-docs`
-- Postman Collection: Available in repository
+COMMIT;
+```
+
+### 11.3 Deployment Steps
+
+1. **Pre-deployment**
+   - Run all tests (unit, integration, e2e)
+   - Build frontend assets
+   - Run database migrations
+   - Update environment variables
+
+2. **Deployment**
+   - Deploy backend services
+   - Deploy frontend application
+   - Update API gateway configuration
+   - Verify health checks
+
+3. **Post-deployment**
+   - Run smoke tests
+   - Monitor error logs
+   - Verify metrics and performance
+   - Rollback plan ready if needed
 
 ---
 
-## Document History
+## 12. Monitoring & Logging
 
-| Version | Date | Author | Changes |
-|---------|------|--------|----------|
-| 1.0 | 2024-01-10 | Dev Team | Initial version |
-| 2.0 | 2024-01-15 | Dev Team | Added modifications per RCA metadata: max_order_quantity validation, cart total recalculation, empty cart redirection |
+### 12.1 Logging Strategy
+
+1. **Application Logs**
+   - Log all API requests with user_id, endpoint, and timestamp
+   - Log validation errors with details
+   - Log database operations
+   - Log automatic recalculation events
+
+2. **Error Logs**
+   - Log all exceptions with stack traces
+   - Log failed validations
+   - Log authentication failures
+
+3. **Audit Logs**
+   - Log cart modifications (add, update, remove)
+   - Log price changes
+   - Log checkout events
+
+### 12.2 Metrics & Monitoring
+
+1. **Performance Metrics**
+   - API response times
+   - Database query times
+   - Cache hit rates
+   - Error rates
+
+2. **Business Metrics**
+   - Cart abandonment rate
+   - Average cart value
+   - Items per cart
+   - Conversion rate
+
+3. **Alerts**
+   - High error rate (> 5%)
+   - Slow response times (> 1s)
+   - Database connection failures
+   - High memory usage
+
+---
+
+## 13. Future Enhancements
+
+### 13.1 Planned Features
+
+1. **Save for Later**
+   - Allow users to move items to "saved" list
+   - Implement separate saved_items table
+   - Add UI for managing saved items
+
+2. **Cart Sharing**
+   - Generate shareable cart links
+   - Allow collaborative cart editing
+   - Implement cart merge functionality
+
+3. **Recommendations**
+   - Show related products in cart
+   - Suggest frequently bought together items
+   - Implement personalized recommendations
+
+4. **Promotions & Discounts**
+   - Apply coupon codes
+   - Calculate discounts
+   - Show savings in cart summary
+
+5. **Inventory Integration**
+   - Real-time stock checking
+   - Reserve items in cart
+   - Notify users of stock changes
+
+### 13.2 Technical Improvements
+
+1. **Performance**
+   - Implement GraphQL for flexible queries
+   - Add server-side rendering for cart page
+   - Optimize database queries with materialized views
+
+2. **Scalability**
+   - Implement microservices architecture
+   - Add message queue for async operations
+   - Implement distributed caching
+
+3. **User Experience**
+   - Add progressive web app features
+   - Implement offline cart support
+   - Add real-time cart sync across devices
+
+---
+
+## 14. Appendix
+
+### 14.1 API Reference Summary
+
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| /api/cart | GET | Get user's cart | Yes |
+| /api/cart/items | POST | Add item to cart | Yes |
+| /api/cart/items/:id | PUT | Update item quantity | Yes |
+| /api/cart/items/:id | DELETE | Remove item from cart | Yes |
+| /api/cart | DELETE | Clear entire cart | Yes |
+
+### 14.2 Error Code Reference
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| PRODUCT_NOT_FOUND | 404 | Product does not exist |
+| PRODUCT_UNAVAILABLE | 400 | Product is not available |
+| MAX_QUANTITY_EXCEEDED | 400 | Quantity exceeds max_order_quantity |
+| INVALID_QUANTITY | 400 | Quantity must be positive integer |
+| CART_ITEM_NOT_FOUND | 404 | Cart item does not exist |
+| UNAUTHORIZED | 401 | Authentication required |
+| FORBIDDEN | 403 | User cannot access this cart |
+| INTERNAL_ERROR | 500 | Unexpected server error |
+
+### 14.3 Database Indexes
+
+```sql
+-- Performance indexes
+CREATE INDEX idx_carts_user_id ON carts(user_id);
+CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
+CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
+CREATE UNIQUE INDEX idx_cart_items_unique ON cart_items(cart_id, product_id);
+```
+
+### 14.4 Glossary
+
+- **Cart**: A collection of items a user intends to purchase
+- **Cart Item**: An individual product in the cart with quantity
+- **Subtotal**: Price × Quantity for a single cart item
+- **Total**: Sum of all subtotals in the cart
+- **max_order_quantity**: Maximum quantity allowed per product per order
+- **Recalculation**: Process of updating subtotals and totals after quantity changes
+
+---
+
+## Document Control
+
+**Document Owner**: Engineering Team  
+**Last Updated**: 2024-01-20  
+**Next Review Date**: 2024-02-20  
+**Status**: Approved with RCA Modifications
+
+**Change Log**:
+- v1.0 (2024-01-15): Initial LLD document
+- v1.1 (2024-01-20): Applied RCA modifications:
+  - Added automatic recalculation logic to Shopping Cart Service
+  - Added redirection link to empty cart view in Shopping Cart Component
+  - Modified Shopping Cart Controller to enforce max_order_quantity on update
+  - Modified Cart Item Component to add UI validation for max_order_quantity
 
 ---
 
