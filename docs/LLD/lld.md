@@ -639,8 +639,9 @@ class CartService {
     // Add item to cart
     await this.cartRepository.addItem(cart.id, itemData);
 
-    // Return updated cart
-    return await this.getCart(userId, sessionId);
+    // Recalculate totals after adding item
+    const updatedCart = await this.getCart(userId, sessionId);
+    return await this.calculateTotals(updatedCart);
   }
 
   async updateItem(userId, sessionId, itemId, quantity) {
@@ -659,13 +660,17 @@ class CartService {
     // Update item
     await this.cartRepository.updateItem(itemId, quantity);
 
-    // Return updated cart
-    return await this.getCart(userId, sessionId);
+    // Recalculate totals after updating item
+    const updatedCart = await this.getCart(userId, sessionId);
+    return await this.calculateTotals(updatedCart);
   }
 
   async removeItem(userId, sessionId, itemId) {
     await this.cartRepository.removeItem(itemId);
-    return await this.getCart(userId, sessionId);
+    
+    // Recalculate totals after removing item
+    const updatedCart = await this.getCart(userId, sessionId);
+    return await this.calculateTotals(updatedCart);
   }
 
   async clearCart(userId, sessionId) {
@@ -677,7 +682,7 @@ class CartService {
   async calculateTotals(cart) {
     let subtotal = 0;
 
-    // Calculate subtotal
+    // Calculate subtotal and individual item totals
     cart.items.forEach(item => {
       item.total = item.price * item.quantity;
       subtotal += item.total;
@@ -731,6 +736,153 @@ class CartService {
   }
 }
 ```
+
+#### 3.3.4 Empty Cart UI Redirection Logic
+
+**Purpose**: Implement UI redirection logic for empty cart state to enhance user experience.
+
+**Business Rule Reference**: story_summary.json: business_logic_rules[1]
+
+**Implementation Details**:
+
+When the shopping cart is empty, the system must provide a clear path for users to continue shopping. This is implemented through both backend response structure and frontend handling.
+
+**Backend Response Structure**:
+```javascript
+class CartService {
+  async getCart(userId, sessionId) {
+    let cart;
+    
+    if (userId) {
+      cart = await this.cartRepository.findByUserId(userId);
+    } else {
+      cart = await this.cartRepository.findBySessionId(sessionId);
+    }
+
+    if (!cart) {
+      cart = await this.cartRepository.create({ userId, sessionId });
+    }
+
+    // Calculate totals
+    cart = await this.calculateTotals(cart);
+
+    // Add empty cart metadata for UI handling
+    if (!cart.items || cart.items.length === 0) {
+      cart.isEmpty = true;
+      cart.continueShopping = {
+        url: '/products',
+        message: 'Your cart is empty. Continue shopping to add items.'
+      };
+    } else {
+      cart.isEmpty = false;
+    }
+
+    return cart;
+  }
+}
+```
+
+**Frontend UI Redirection Logic**:
+```javascript
+// Cart Component Handler
+class CartUIHandler {
+  async displayCart(userId, sessionId) {
+    const cart = await cartService.getCart(userId, sessionId);
+    
+    // Check if cart is empty
+    if (cart.isEmpty) {
+      // Display empty cart message with continue shopping link
+      this.renderEmptyCartState(cart.continueShopping);
+    } else {
+      // Display cart items
+      this.renderCartItems(cart);
+    }
+  }
+
+  renderEmptyCartState(continueShoppingData) {
+    // Render empty cart UI with prominent "Continue Shopping" link
+    const emptyCartHTML = `
+      <div class="empty-cart-container">
+        <div class="empty-cart-icon">
+          <i class="icon-shopping-cart"></i>
+        </div>
+        <h2>Your Cart is Empty</h2>
+        <p>${continueShoppingData.message}</p>
+        <a href="${continueShoppingData.url}" class="btn btn-primary">
+          Continue Shopping
+        </a>
+      </div>
+    `;
+    
+    document.getElementById('cart-content').innerHTML = emptyCartHTML;
+  }
+
+  renderCartItems(cart) {
+    // Render cart items with subtotals and total
+    // Implementation details...
+  }
+}
+```
+
+**API Response Enhancement**:
+```javascript
+// GET /api/cart response when cart is empty
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "items": [],
+    "subtotal": 0,
+    "tax": 0,
+    "shipping": 0,
+    "discount": 0,
+    "total": 0,
+    "isEmpty": true,
+    "continueShopping": {
+      "url": "/products",
+      "message": "Your cart is empty. Continue shopping to add items."
+    }
+  }
+}
+```
+
+**Mermaid Sequence Diagram - Empty Cart Flow**:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant CartService
+    participant CartRepository
+    participant Database
+
+    User->>Frontend: Access Cart Page
+    Frontend->>CartService: getCart(userId, sessionId)
+    CartService->>CartRepository: findByUserId(userId)
+    CartRepository->>Database: SELECT cart and items
+    Database-->>CartRepository: Return cart data
+    CartRepository-->>CartService: Return cart
+    
+    alt Cart is empty
+        CartService->>CartService: Set isEmpty = true
+        CartService->>CartService: Add continueShopping metadata
+        CartService-->>Frontend: Return cart with empty state
+        Frontend->>Frontend: renderEmptyCartState()
+        Frontend-->>User: Display empty cart with "Continue Shopping" link
+        User->>Frontend: Click "Continue Shopping"
+        Frontend->>Frontend: Redirect to /products
+    else Cart has items
+        CartService-->>Frontend: Return cart with items
+        Frontend->>Frontend: renderCartItems()
+        Frontend-->>User: Display cart items
+    end
+```
+
+**Key Implementation Points**:
+1. Backend automatically detects empty cart state
+2. Response includes `isEmpty` flag and `continueShopping` metadata
+3. Frontend checks `isEmpty` flag and renders appropriate UI
+4. "Continue Shopping" link redirects to product catalog
+5. Empty cart state is handled gracefully without errors
 
 ### 3.4 Order Management Module
 
@@ -1567,7 +1719,7 @@ class Database {
 
 #### GET /api/cart
 ```javascript
-// Response (200 OK)
+// Response (200 OK) - Cart with items
 {
   "success": true,
   "data": {
@@ -1578,7 +1730,7 @@ class Database {
         "productId": 1,
         "quantity": 2,
         "price": 99.99,
-        "total": 199.98,
+        "subtotal": 199.98,
         "product": {
           "id": 1,
           "name": "Product Name",
@@ -1590,7 +1742,27 @@ class Database {
     "tax": 15.99,
     "shipping": 10.00,
     "discount": 0,
-    "total": 225.97
+    "total": 225.97,
+    "isEmpty": false
+  }
+}
+
+// Response (200 OK) - Empty cart
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "items": [],
+    "subtotal": 0,
+    "tax": 0,
+    "shipping": 0,
+    "discount": 0,
+    "total": 0,
+    "isEmpty": true,
+    "continueShopping": {
+      "url": "/products",
+      "message": "Your cart is empty. Continue shopping to add items."
+    }
   }
 }
 ```
@@ -1609,11 +1781,26 @@ class Database {
   "success": true,
   "data": {
     "id": 1,
-    "items": [...],
+    "items": [
+      {
+        "id": 1,
+        "productId": 1,
+        "quantity": 2,
+        "price": 99.99,
+        "subtotal": 199.98,
+        "product": {
+          "id": 1,
+          "name": "Product Name",
+          "image": "https://example.com/image1.jpg"
+        }
+      }
+    ],
     "subtotal": 199.98,
     "tax": 15.99,
     "shipping": 10.00,
-    "total": 225.97
+    "discount": 0,
+    "total": 225.97,
+    "isEmpty": false
   }
 }
 ```
@@ -1630,11 +1817,26 @@ class Database {
   "success": true,
   "data": {
     "id": 1,
-    "items": [...],
+    "items": [
+      {
+        "id": 1,
+        "productId": 1,
+        "quantity": 3,
+        "price": 99.99,
+        "subtotal": 299.97,
+        "product": {
+          "id": 1,
+          "name": "Product Name",
+          "image": "https://example.com/image1.jpg"
+        }
+      }
+    ],
     "subtotal": 299.97,
     "tax": 23.99,
     "shipping": 10.00,
-    "total": 333.96
+    "discount": 0,
+    "total": 333.96,
+    "isEmpty": false
   }
 }
 ```
@@ -1646,11 +1848,17 @@ class Database {
   "success": true,
   "data": {
     "id": 1,
-    "items": [...],
-    "subtotal": 99.99,
-    "tax": 7.99,
-    "shipping": 10.00,
-    "total": 117.98
+    "items": [],
+    "subtotal": 0,
+    "tax": 0,
+    "shipping": 0,
+    "discount": 0,
+    "total": 0,
+    "isEmpty": true,
+    "continueShopping": {
+      "url": "/products",
+      "message": "Your cart is empty. Continue shopping to add items."
+    }
   }
 }
 ```
