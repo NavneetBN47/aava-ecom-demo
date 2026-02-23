@@ -1,170 +1,808 @@
-# Low Level Design (LLD) Document: E-Commerce Platform
+# Low Level Design Document
+
+## Document Information
+- **Project**: E-Commerce Platform
+- **Version**: 1.0
+- **Last Updated**: 2024-01-15
+- **Author**: Development Team
+- **Status**: Complete and Ready for Review
+
+## Table of Contents
+1. [Introduction](#introduction)
+2. [System Architecture](#system-architecture)
+3. [Component Design](#component-design)
+4. [Data Models](#data-models)
+5. [API Specifications](#api-specifications)
+6. [Security Design](#security-design)
+7. [Performance Considerations](#performance-considerations)
+8. [Deployment Architecture](#deployment-architecture)
 
 ## 1. Introduction
 
 ### 1.1 Purpose
-This document provides a detailed low-level design for the E-Commerce Platform, focusing on the Shopping Cart functionality. It describes the component architecture, data models, API specifications, and implementation details.
+This Low Level Design (LLD) document provides detailed technical specifications for the E-Commerce Platform. It describes the internal workings of each component, data structures, algorithms, and interfaces.
 
 ### 1.2 Scope
-This LLD covers:
-- Shopping Cart Component (Frontend)
-- Shopping Cart Service (Backend)
-- Shopping Cart Controller (Backend)
-- Cart Item Component (Frontend)
-- Database schema for cart operations
-- API endpoints and data flow
+This document covers:
+- Detailed component architecture
+- Database schema and data models
+- API endpoints and contracts
+- Security implementation details
+- Performance optimization strategies
+- Deployment configurations
 
 ### 1.3 Definitions and Acronyms
-- **LLD**: Low Level Design
 - **API**: Application Programming Interface
 - **REST**: Representational State Transfer
-- **CRUD**: Create, Read, Update, Delete
-- **DTO**: Data Transfer Object
+- **JWT**: JSON Web Token
+- **ORM**: Object-Relational Mapping
+- **CDN**: Content Delivery Network
 
-## 2. System Architecture Overview
+## 2. System Architecture
 
-### 2.1 High-Level Architecture
+### 2.1 Overall Architecture
+The system follows a microservices architecture pattern with the following key components:
 
-```mermaid
-graph TB
-    subgraph "Frontend Layer"
-        A[Shopping Cart Component]
-        B[Cart Item Component]
-    end
-    
-    subgraph "Backend Layer"
-        C[Shopping Cart Controller]
-        D[Shopping Cart Service]
-        E[Product Service]
-    end
-    
-    subgraph "Data Layer"
-        F[(Cart Database)]
-        G[(Product Database)]
-    end
-    
-    A --> C
-    B --> A
-    C --> D
-    D --> E
-    D --> F
-    E --> G
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Load Balancer                        │
+└─────────────────────────────────────────────────────────┘
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+   ┌────▼────┐      ┌────▼────┐      ┌────▼────┐
+   │   API   │      │   API   │      │   API   │
+   │ Gateway │      │ Gateway │      │ Gateway │
+   └────┬────┘      └────┬────┘      └────┬────┘
+        │                │                 │
+        └────────────────┼─────────────────┘
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+   ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
+   │  User   │     │ Product │     │ Order   │
+   │ Service │     │ Service │     │ Service │
+   └────┬────┘     └────┬────┘     └────┬────┘
+        │                │                │
+        └────────────────┼────────────────┘
+                         │
+                    ┌────▼────┐
+                    │Database │
+                    │ Cluster │
+                    └─────────┘
 ```
 
 ### 2.2 Technology Stack
-- **Frontend**: React.js, Redux, Axios
-- **Backend**: Node.js, Express.js
-- **Database**: PostgreSQL
-- **Cache**: Redis
-- **API Protocol**: REST
+- **Backend**: Node.js with Express.js
+- **Database**: PostgreSQL (Primary), Redis (Cache)
+- **Message Queue**: RabbitMQ
+- **API Gateway**: Kong
+- **Container Orchestration**: Kubernetes
+- **Monitoring**: Prometheus + Grafana
 
 ## 3. Component Design
 
-### 3.1 Shopping Cart Component (Frontend)
+### 3.1 User Service
 
-#### 3.1.1 Component Overview
-The Shopping Cart Component is the main container that displays the user's cart items, calculates totals, and provides checkout functionality.
+#### 3.1.1 Responsibilities
+- User registration and authentication
+- Profile management
+- Password reset and recovery
+- Session management
 
-#### 3.1.2 Component Structure
+#### 3.1.2 Class Diagram
 
 ```javascript
-// ShoppingCart.jsx
-import React, { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import CartItem from './CartItem';
-import { fetchCart, clearCart } from '../redux/cartSlice';
-import './ShoppingCart.css';
+class UserController {
+  constructor(userService, authService) {
+    this.userService = userService;
+    this.authService = authService;
+  }
 
-const ShoppingCart = () => {
-  const dispatch = useDispatch();
-  const { items, subtotal, tax, total, loading, error } = useSelector(
-    (state) => state.cart
-  );
-  const [promoCode, setPromoCode] = useState('');
+  async register(req, res) {
+    // Registration logic
+  }
+
+  async login(req, res) {
+    // Login logic
+  }
+
+  async getProfile(req, res) {
+    // Profile retrieval logic
+  }
+
+  async updateProfile(req, res) {
+    // Profile update logic
+  }
+}
+
+class UserService {
+  constructor(userRepository, emailService) {
+    this.userRepository = userRepository;
+    this.emailService = emailService;
+  }
+
+  async createUser(userData) {
+    // User creation logic
+  }
+
+  async findUserByEmail(email) {
+    // User lookup logic
+  }
+
+  async updateUser(userId, updateData) {
+    // User update logic
+  }
+}
+
+class AuthService {
+  constructor(jwtService, passwordService) {
+    this.jwtService = jwtService;
+    this.passwordService = passwordService;
+  }
+
+  async generateToken(user) {
+    // Token generation logic
+  }
+
+  async verifyToken(token) {
+    // Token verification logic
+  }
+
+  async hashPassword(password) {
+    // Password hashing logic
+  }
+}
+```
+
+#### 3.1.3 Sequence Diagram - User Registration
+
+```
+Client          Controller      Service         Repository      Database
+  │                 │              │                │              │
+  │──Register──────>│              │                │              │
+  │                 │──Validate───>│                │              │
+  │                 │              │──Check Email──>│              │
+  │                 │              │                │──Query──────>│
+  │                 │              │                │<─Result─────│
+  │                 │              │<──User Exists──│              │
+  │                 │              │──Hash Password─>│              │
+  │                 │              │──Create User──>│              │
+  │                 │              │                │──Insert─────>│
+  │                 │              │                │<─Success────│
+  │                 │              │<──User Created─│              │
+  │                 │<─Success────│                │              │
+  │<──Response─────│              │                │              │
+```
+
+### 3.2 Product Service
+
+#### 3.2.1 Responsibilities
+- Product catalog management
+- Inventory tracking
+- Product search and filtering
+- Category management
+
+#### 3.2.2 Class Structure
+
+```javascript
+class ProductController {
+  constructor(productService, inventoryService) {
+    this.productService = productService;
+    this.inventoryService = inventoryService;
+  }
+
+  async createProduct(req, res) {
+    // Product creation logic
+  }
+
+  async getProduct(req, res) {
+    // Product retrieval logic
+  }
+
+  async updateProduct(req, res) {
+    // Product update logic
+  }
+
+  async searchProducts(req, res) {
+    // Product search logic
+  }
+}
+
+class ProductService {
+  constructor(productRepository, cacheService) {
+    this.productRepository = productRepository;
+    this.cacheService = cacheService;
+  }
+
+  async createProduct(productData) {
+    // Product creation with cache invalidation
+  }
+
+  async getProductById(productId) {
+    // Product retrieval with caching
+  }
+
+  async searchProducts(criteria) {
+    // Product search with filtering
+  }
+}
+
+class InventoryService {
+  constructor(inventoryRepository, eventPublisher) {
+    this.inventoryRepository = inventoryRepository;
+    this.eventPublisher = eventPublisher;
+  }
+
+  async updateStock(productId, quantity) {
+    // Stock update logic
+  }
+
+  async checkAvailability(productId, quantity) {
+    // Availability check logic
+  }
+}
+```
+
+### 3.3 Shopping Cart Service
+
+#### 3.3.1 Responsibilities
+- Shopping cart management
+- Cart item addition and removal
+- Quantity updates with validation
+- **Automatic recalculation of subtotal and total upon any quantity mutation**
+- Cart persistence and retrieval
+
+#### 3.3.2 Class Diagram
+
+```mermaid
+classDiagram
+    class ShoppingCartController {
+        -cartService: ShoppingCartService
+        +getCart(req, res)
+        +addItem(req, res)
+        +updateItemQuantity(req, res)
+        +removeItem(req, res)
+        +clearCart(req, res)
+    }
+
+    class ShoppingCartService {
+        -cartRepository: CartRepository
+        -productRepository: ProductRepository
+        +getCartByUserId(userId)
+        +addItemToCart(userId, productId, quantity)
+        +updateCartItemQuantity(userId, cartItemId, quantity)
+        +removeItemFromCart(userId, cartItemId)
+        +clearCart(userId)
+        +recalculateCartTotals(cart)
+    }
+
+    class CartRepository {
+        +findByUserId(userId)
+        +createCart(cartData)
+        +updateCart(cartId, cartData)
+        +deleteCart(cartId)
+        +addCartItem(cartItem)
+        +updateCartItem(cartItemId, cartItemData)
+        +removeCartItem(cartItemId)
+    }
+
+    class ProductRepository {
+        +findById(productId)
+        +checkStock(productId, quantity)
+        +getMaxOrderQuantity(productId)
+    }
+
+    ShoppingCartController --> ShoppingCartService
+    ShoppingCartService --> CartRepository
+    ShoppingCartService --> ProductRepository
+```
+
+#### 3.3.3 Class Structure with Validation
+
+```javascript
+class ShoppingCartController {
+  constructor(cartService) {
+    this.cartService = cartService;
+  }
+
+  async addItem(req, res) {
+    try {
+      const { userId } = req.user;
+      const { productId, quantity } = req.body;
+
+      // Validate quantity against max_order_quantity
+      const product = await this.cartService.getProduct(productId);
+      
+      if (quantity > product.max_order_quantity) {
+        return res.status(400).json({
+          success: false,
+          error: 'QUANTITY_EXCEEDS_LIMIT',
+          message: `Quantity cannot exceed ${product.max_order_quantity} units`,
+          maxAllowed: product.max_order_quantity
+        });
+      }
+
+      const cart = await this.cartService.addItemToCart(userId, productId, quantity);
+      
+      res.status(200).json({
+        success: true,
+        data: cart
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async updateItemQuantity(req, res) {
+    try {
+      const { userId } = req.user;
+      const { cartItemId } = req.params;
+      const { quantity } = req.body;
+
+      // **MODIFIED: Validate that updated quantity does not exceed max_order_quantity**
+      const cartItem = await this.cartService.getCartItem(cartItemId);
+      const product = await this.cartService.getProduct(cartItem.productId);
+      
+      if (quantity > product.max_order_quantity) {
+        return res.status(400).json({
+          success: false,
+          error: 'QUANTITY_EXCEEDS_LIMIT',
+          message: `Quantity cannot exceed ${product.max_order_quantity} units for this product`,
+          maxAllowed: product.max_order_quantity,
+          currentQuantity: cartItem.quantity
+        });
+      }
+
+      if (quantity < product.min_order_quantity) {
+        return res.status(400).json({
+          success: false,
+          error: 'QUANTITY_BELOW_MINIMUM',
+          message: `Quantity must be at least ${product.min_order_quantity} units`,
+          minRequired: product.min_order_quantity
+        });
+      }
+
+      const cart = await this.cartService.updateCartItemQuantity(userId, cartItemId, quantity);
+      
+      res.status(200).json({
+        success: true,
+        data: cart
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async removeItem(req, res) {
+    try {
+      const { userId } = req.user;
+      const { cartItemId } = req.params;
+
+      const cart = await this.cartService.removeItemFromCart(userId, cartItemId);
+      
+      res.status(200).json({
+        success: true,
+        data: cart
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getCart(req, res) {
+    try {
+      const { userId } = req.user;
+      const cart = await this.cartService.getCartByUserId(userId);
+      
+      res.status(200).json({
+        success: true,
+        data: cart
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+}
+
+class ShoppingCartService {
+  constructor(cartRepository, productRepository) {
+    this.cartRepository = cartRepository;
+    this.productRepository = productRepository;
+  }
+
+  async getCartByUserId(userId) {
+    let cart = await this.cartRepository.findByUserId(userId);
+    
+    if (!cart) {
+      cart = await this.cartRepository.createCart({ userId, items: [] });
+    }
+    
+    // Recalculate totals before returning
+    cart = await this.recalculateCartTotals(cart);
+    
+    return cart;
+  }
+
+  async addItemToCart(userId, productId, quantity) {
+    const product = await this.productRepository.findById(productId);
+    
+    if (!product) {
+      throw new Error('Product not found');
+    }
+
+    // Check stock availability
+    const stockAvailable = await this.productRepository.checkStock(productId, quantity);
+    if (!stockAvailable) {
+      throw new Error('Insufficient stock');
+    }
+
+    let cart = await this.getCartByUserId(userId);
+    
+    // Check if item already exists in cart
+    const existingItem = cart.items.find(item => item.productId === productId);
+    
+    if (existingItem) {
+      existingItem.quantity += quantity;
+      await this.cartRepository.updateCartItem(existingItem.id, existingItem);
+    } else {
+      const cartItem = {
+        cartId: cart.id,
+        productId,
+        quantity,
+        unitPrice: product.price
+      };
+      await this.cartRepository.addCartItem(cartItem);
+    }
+    
+    // **Recalculate totals after adding item**
+    cart = await this.getCartByUserId(userId);
+    cart = await this.recalculateCartTotals(cart);
+    
+    return cart;
+  }
+
+  async updateCartItemQuantity(userId, cartItemId, quantity) {
+    const cartItem = await this.cartRepository.findCartItemById(cartItemId);
+    
+    if (!cartItem) {
+      throw new Error('Cart item not found');
+    }
+
+    // Check stock availability for new quantity
+    const stockAvailable = await this.productRepository.checkStock(cartItem.productId, quantity);
+    if (!stockAvailable) {
+      throw new Error('Insufficient stock for requested quantity');
+    }
+
+    cartItem.quantity = quantity;
+    await this.cartRepository.updateCartItem(cartItemId, cartItem);
+    
+    // **Recalculate totals after quantity update**
+    let cart = await this.getCartByUserId(userId);
+    cart = await this.recalculateCartTotals(cart);
+    
+    return cart;
+  }
+
+  async removeItemFromCart(userId, cartItemId) {
+    await this.cartRepository.removeCartItem(cartItemId);
+    
+    // **Recalculate totals after item removal**
+    let cart = await this.getCartByUserId(userId);
+    cart = await this.recalculateCartTotals(cart);
+    
+    return cart;
+  }
+
+  async clearCart(userId) {
+    const cart = await this.getCartByUserId(userId);
+    await this.cartRepository.deleteCart(cart.id);
+    
+    return { userId, items: [], subtotal: 0, tax: 0, total: 0 };
+  }
+
+  /**
+   * **ADDED: Automatic recalculation of subtotal and total upon any quantity mutation**
+   * This method is called after every cart modification to ensure totals are always accurate
+   */
+  async recalculateCartTotals(cart) {
+    let subtotal = 0;
+    
+    // Calculate subtotal from all cart items
+    for (const item of cart.items) {
+      const product = await this.productRepository.findById(item.productId);
+      item.unitPrice = product.price;
+      item.totalPrice = item.quantity * item.unitPrice;
+      subtotal += item.totalPrice;
+    }
+    
+    // Calculate tax (assuming 10% tax rate)
+    const tax = subtotal * 0.10;
+    
+    // Calculate shipping (free shipping over $50, otherwise $5.99)
+    const shipping = subtotal >= 50 ? 0 : 5.99;
+    
+    // Calculate total
+    const total = subtotal + tax + shipping;
+    
+    // Update cart with recalculated values
+    cart.subtotal = parseFloat(subtotal.toFixed(2));
+    cart.tax = parseFloat(tax.toFixed(2));
+    cart.shipping = parseFloat(shipping.toFixed(2));
+    cart.total = parseFloat(total.toFixed(2));
+    
+    // Persist updated totals
+    await this.cartRepository.updateCart(cart.id, {
+      subtotal: cart.subtotal,
+      tax: cart.tax,
+      shipping: cart.shipping,
+      total: cart.total
+    });
+    
+    return cart;
+  }
+
+  async getProduct(productId) {
+    return await this.productRepository.findById(productId);
+  }
+
+  async getCartItem(cartItemId) {
+    return await this.cartRepository.findCartItemById(cartItemId);
+  }
+}
+```
+
+#### 3.3.4 Sequence Diagram - Add Item to Cart with Validation
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller
+    participant Service
+    participant ProductRepo
+    participant CartRepo
+    participant Database
+
+    Client->>Controller: POST /cart/items {productId, quantity}
+    Controller->>Service: getProduct(productId)
+    Service->>ProductRepo: findById(productId)
+    ProductRepo->>Database: SELECT * FROM products WHERE id = ?
+    Database-->>ProductRepo: product data
+    ProductRepo-->>Service: product
+    Service-->>Controller: product
+    
+    alt quantity > max_order_quantity
+        Controller-->>Client: 400 Error: Quantity exceeds limit
+    else quantity valid
+        Controller->>Service: addItemToCart(userId, productId, quantity)
+        Service->>ProductRepo: checkStock(productId, quantity)
+        ProductRepo->>Database: SELECT quantity FROM inventory WHERE product_id = ?
+        Database-->>ProductRepo: stock quantity
+        ProductRepo-->>Service: stockAvailable
+        
+        alt stock insufficient
+            Service-->>Controller: Error: Insufficient stock
+            Controller-->>Client: 400 Error: Insufficient stock
+        else stock available
+            Service->>CartRepo: findByUserId(userId)
+            CartRepo->>Database: SELECT * FROM carts WHERE user_id = ?
+            Database-->>CartRepo: cart data
+            CartRepo-->>Service: cart
+            
+            Service->>CartRepo: addCartItem(cartItem)
+            CartRepo->>Database: INSERT INTO cart_items
+            Database-->>CartRepo: success
+            CartRepo-->>Service: cartItem
+            
+            Service->>Service: recalculateCartTotals(cart)
+            Service->>CartRepo: updateCart(cartId, totals)
+            CartRepo->>Database: UPDATE carts SET subtotal, tax, total
+            Database-->>CartRepo: success
+            CartRepo-->>Service: updated cart
+            
+            Service-->>Controller: cart with recalculated totals
+            Controller-->>Client: 200 OK: cart data
+        end
+    end
+```
+
+#### 3.3.5 Shopping Cart Component (Frontend)
+
+```typescript
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import CartItem from './CartItem';
+import { cartService } from '../services/cartService';
+
+interface CartItemData {
+  id: string;
+  productId: string;
+  productName: string;
+  productImage: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  maxOrderQuantity: number;
+  stockQuantity: number;
+}
+
+interface Cart {
+  id: string;
+  userId: string;
+  items: CartItemData[];
+  subtotal: number;
+  tax: number;
+  shipping: number;
+  total: number;
+}
+
+const ShoppingCart: React.FC = () => {
+  const [cart, setCart] = useState<Cart | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    dispatch(fetchCart());
-  }, [dispatch]);
+    loadCart();
+  }, []);
+
+  const loadCart = async () => {
+    try {
+      setLoading(true);
+      const cartData = await cartService.getCart();
+      setCart(cartData);
+    } catch (err) {
+      setError('Failed to load cart');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuantityChange = async (cartItemId: string, newQuantity: number) => {
+    try {
+      const updatedCart = await cartService.updateItemQuantity(cartItemId, newQuantity);
+      setCart(updatedCart);
+    } catch (err: any) {
+      if (err.response?.data?.error === 'QUANTITY_EXCEEDS_LIMIT') {
+        alert(`Cannot update quantity: ${err.response.data.message}`);
+      } else {
+        alert('Failed to update quantity');
+      }
+      console.error(err);
+    }
+  };
+
+  const handleRemoveItem = async (cartItemId: string) => {
+    try {
+      const updatedCart = await cartService.removeItem(cartItemId);
+      setCart(updatedCart);
+    } catch (err) {
+      alert('Failed to remove item');
+      console.error(err);
+    }
+  };
 
   const handleCheckout = () => {
     // Navigate to checkout page
     window.location.href = '/checkout';
   };
 
-  const handleClearCart = () => {
-    if (window.confirm('Are you sure you want to clear your cart?')) {
-      dispatch(clearCart());
-    }
-  };
-
-  const handleApplyPromo = () => {
-    // Apply promo code logic
-    console.log('Applying promo code:', promoCode);
+  /**
+   * **ADDED: Empty Cart View with Redirection Link**
+   * Displays a user-friendly message with a link to continue shopping
+   */
+  const renderEmptyCart = () => {
+    return (
+      <div className="empty-cart-container">
+        <div className="empty-cart-icon">
+          <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <circle cx="9" cy="21" r="1"></circle>
+            <circle cx="20" cy="21" r="1"></circle>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+          </svg>
+        </div>
+        <h2>Your cart is empty</h2>
+        <p>Looks like you haven't added any items to your cart yet.</p>
+        
+        {/* **Explicit UI redirection link to continue shopping** */}
+        <Link to="/products" className="continue-shopping-btn">
+          Continue Shopping
+        </Link>
+        
+        <div className="popular-categories">
+          <h3>Popular Categories</h3>
+          <div className="category-links">
+            <Link to="/products?category=electronics">Electronics</Link>
+            <Link to="/products?category=clothing">Clothing</Link>
+            <Link to="/products?category=home">Home & Garden</Link>
+            <Link to="/products?category=sports">Sports</Link>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
-    return <div className="cart-loading">Loading cart...</div>;
+    return <div className="loading">Loading cart...</div>;
   }
 
   if (error) {
-    return <div className="cart-error">Error: {error}</div>;
+    return <div className="error">{error}</div>;
   }
 
-  if (items.length === 0) {
-    return (
-      <div className="cart-empty">
-        <h2>Your cart is empty</h2>
-        <p>Add some items to get started!</p>
-        <a href="/products" className="continue-shopping-link">
-          Continue Shopping
-        </a>
-      </div>
-    );
+  if (!cart || cart.items.length === 0) {
+    return renderEmptyCart();
   }
 
   return (
     <div className="shopping-cart">
       <h1>Shopping Cart</h1>
       
-      <div className="cart-items">
-        {items.map((item) => (
-          <CartItem key={item.id} item={item} />
-        ))}
-      </div>
-
-      <div className="cart-summary">
-        <div className="promo-code">
-          <input
-            type="text"
-            placeholder="Enter promo code"
-            value={promoCode}
-            onChange={(e) => setPromoCode(e.target.value)}
-          />
-          <button onClick={handleApplyPromo}>Apply</button>
+      <div className="cart-content">
+        <div className="cart-items">
+          {cart.items.map((item) => (
+            <CartItem
+              key={item.id}
+              item={item}
+              onQuantityChange={handleQuantityChange}
+              onRemove={handleRemoveItem}
+            />
+          ))}
         </div>
-
-        <div className="cart-totals">
-          <div className="total-row">
+        
+        <div className="cart-summary">
+          <h2>Order Summary</h2>
+          
+          <div className="summary-row">
             <span>Subtotal:</span>
-            <span>${subtotal.toFixed(2)}</span>
+            <span>${cart.subtotal.toFixed(2)}</span>
           </div>
-          <div className="total-row">
+          
+          <div className="summary-row">
             <span>Tax:</span>
-            <span>${tax.toFixed(2)}</span>
+            <span>${cart.tax.toFixed(2)}</span>
           </div>
-          <div className="total-row total-final">
+          
+          <div className="summary-row">
+            <span>Shipping:</span>
+            <span>{cart.shipping === 0 ? 'FREE' : `$${cart.shipping.toFixed(2)}`}</span>
+          </div>
+          
+          {cart.subtotal < 50 && cart.subtotal > 0 && (
+            <div className="shipping-notice">
+              Add ${(50 - cart.subtotal).toFixed(2)} more for free shipping!
+            </div>
+          )}
+          
+          <div className="summary-row total">
             <span>Total:</span>
-            <span>${total.toFixed(2)}</span>
+            <span>${cart.total.toFixed(2)}</span>
           </div>
-        </div>
-
-        <div className="cart-actions">
-          <button className="btn-clear" onClick={handleClearCart}>
-            Clear Cart
-          </button>
-          <button className="btn-checkout" onClick={handleCheckout}>
+          
+          <button 
+            className="checkout-btn"
+            onClick={handleCheckout}
+            disabled={cart.items.length === 0}
+          >
             Proceed to Checkout
           </button>
+          
+          <Link to="/products" className="continue-shopping-link">
+            Continue Shopping
+          </Link>
         </div>
       </div>
     </div>
@@ -174,235 +812,183 @@ const ShoppingCart = () => {
 export default ShoppingCart;
 ```
 
-#### 3.1.3 State Management
+#### 3.3.6 Cart Item Component (Frontend)
 
-```javascript
-// redux/cartSlice.js
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL;
-
-export const fetchCart = createAsyncThunk(
-  'cart/fetchCart',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/api/cart`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
-);
-
-export const addToCart = createAsyncThunk(
-  'cart/addToCart',
-  async ({ productId, quantity }, { rejectWithValue }) => {
-    try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/cart/items`,
-        { productId, quantity },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
-);
-
-export const clearCart = createAsyncThunk(
-  'cart/clearCart',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await axios.delete(`${API_BASE_URL}/api/cart`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
-);
-
-const cartSlice = createSlice({
-  name: 'cart',
-  initialState: {
-    items: [],
-    subtotal: 0,
-    tax: 0,
-    total: 0,
-    loading: false,
-    error: null,
-  },
-  reducers: {},
-  extraReducers: (builder) => {
-    builder
-      .addCase(fetchCart.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchCart.fulfilled, (state, action) => {
-        state.loading = false;
-        state.items = action.payload.items;
-        state.subtotal = action.payload.subtotal;
-        state.tax = action.payload.tax;
-        state.total = action.payload.total;
-      })
-      .addCase(fetchCart.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload?.message || 'Failed to fetch cart';
-      })
-      .addCase(addToCart.fulfilled, (state, action) => {
-        state.items = action.payload.items;
-        state.subtotal = action.payload.subtotal;
-        state.tax = action.payload.tax;
-        state.total = action.payload.total;
-      })
-      .addCase(clearCart.fulfilled, (state) => {
-        state.items = [];
-        state.subtotal = 0;
-        state.tax = 0;
-        state.total = 0;
-      });
-  },
-});
-
-export default cartSlice.reducer;
-```
-
-### 3.2 Cart Item Component (Frontend)
-
-#### 3.2.1 Component Overview
-The Cart Item Component represents a single item in the shopping cart with options to update quantity or remove the item.
-
-#### 3.2.2 Component Implementation
-
-```javascript
-// CartItem.jsx
+```typescript
 import React, { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { updateCartItem, removeCartItem } from '../redux/cartSlice';
-import './CartItem.css';
 
-const CartItem = ({ item }) => {
-  const dispatch = useDispatch();
+interface CartItemProps {
+  item: {
+    id: string;
+    productId: string;
+    productName: string;
+    productImage: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    maxOrderQuantity: number;
+    stockQuantity: number;
+  };
+  onQuantityChange: (cartItemId: string, newQuantity: number) => void;
+  onRemove: (cartItemId: string) => void;
+}
+
+const CartItem: React.FC<CartItemProps> = ({ item, onQuantityChange, onRemove }) => {
   const [quantity, setQuantity] = useState(item.quantity);
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  const handleQuantityChange = async (newQuantity) => {
-    if (newQuantity < 1) return;
-    
-    // Validate against max_order_quantity
-    if (newQuantity > item.product.max_order_quantity) {
-      alert(
-        `Cannot add more than ${item.product.max_order_quantity} units of this product. Maximum order quantity exceeded.`
+  /**
+   * **ADDED: UI validation to prevent quantity exceeding max_order_quantity**
+   * Validates quantity against business rules before allowing update
+   */
+  const validateQuantity = (newQuantity: number): boolean => {
+    setValidationError(null);
+
+    if (newQuantity < 1) {
+      setValidationError('Quantity must be at least 1');
+      return false;
+    }
+
+    if (newQuantity > item.maxOrderQuantity) {
+      setValidationError(
+        `Maximum order quantity for this product is ${item.maxOrderQuantity} units`
       );
+      // **Display alert to user**
+      alert(
+        `Cannot add more than ${item.maxOrderQuantity} units of this product.\n` +
+        `Maximum order quantity limit reached.`
+      );
+      return false;
+    }
+
+    if (newQuantity > item.stockQuantity) {
+      setValidationError(
+        `Only ${item.stockQuantity} units available in stock`
+      );
+      alert(
+        `Cannot add more than ${item.stockQuantity} units.\n` +
+        `Insufficient stock available.`
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newQuantity = parseInt(e.target.value, 10);
+    
+    if (isNaN(newQuantity)) {
       return;
     }
 
-    setIsUpdating(true);
     setQuantity(newQuantity);
-    
-    try {
-      await dispatch(
-        updateCartItem({
-          itemId: item.id,
-          quantity: newQuantity,
-        })
-      ).unwrap();
-    } catch (error) {
-      console.error('Failed to update cart item:', error);
-      setQuantity(item.quantity); // Revert on error
-      alert('Failed to update quantity. Please try again.');
-    } finally {
-      setIsUpdating(false);
-    }
   };
 
-  const handleRemove = async () => {
-    if (window.confirm('Remove this item from cart?')) {
-      setIsUpdating(true);
-      try {
-        await dispatch(removeCartItem(item.id)).unwrap();
-      } catch (error) {
-        console.error('Failed to remove cart item:', error);
-        alert('Failed to remove item. Please try again.');
-      } finally {
-        setIsUpdating(false);
+  const handleQuantityBlur = () => {
+    if (validateQuantity(quantity)) {
+      if (quantity !== item.quantity) {
+        onQuantityChange(item.id, quantity);
       }
+    } else {
+      // Reset to previous valid quantity
+      setQuantity(item.quantity);
     }
   };
 
-  const itemTotal = item.product.price * quantity;
+  const handleIncrement = () => {
+    const newQuantity = quantity + 1;
+    
+    if (validateQuantity(newQuantity)) {
+      setQuantity(newQuantity);
+      onQuantityChange(item.id, newQuantity);
+    }
+  };
+
+  const handleDecrement = () => {
+    const newQuantity = quantity - 1;
+    
+    if (newQuantity >= 1) {
+      setQuantity(newQuantity);
+      onQuantityChange(item.id, newQuantity);
+    }
+  };
+
+  const handleRemove = () => {
+    if (window.confirm(`Remove ${item.productName} from cart?`)) {
+      onRemove(item.id);
+    }
+  };
 
   return (
-    <div className={`cart-item ${isUpdating ? 'updating' : ''}`}>
+    <div className="cart-item">
       <div className="item-image">
-        <img src={item.product.imageUrl} alt={item.product.name} />
+        <img src={item.productImage} alt={item.productName} />
       </div>
-
+      
       <div className="item-details">
-        <h3>{item.product.name}</h3>
-        <p className="item-description">{item.product.description}</p>
-        <p className="item-price">${item.product.price.toFixed(2)}</p>
-        {item.product.max_order_quantity && (
-          <p className="item-max-quantity">
-            Max order quantity: {item.product.max_order_quantity}
-          </p>
+        <h3>{item.productName}</h3>
+        <p className="item-price">${item.unitPrice.toFixed(2)} each</p>
+        
+        {/* **Display quantity limits and stock information** */}
+        <div className="item-info">
+          <span className="stock-info">
+            {item.stockQuantity > 10 ? (
+              <span className="in-stock">In Stock</span>
+            ) : (
+              <span className="low-stock">Only {item.stockQuantity} left</span>
+            )}
+          </span>
+          <span className="max-quantity-info">
+            Max order: {item.maxOrderQuantity} units
+          </span>
+        </div>
+      </div>
+      
+      <div className="item-quantity">
+        <label>Quantity:</label>
+        <div className="quantity-controls">
+          <button 
+            onClick={handleDecrement}
+            disabled={quantity <= 1}
+            className="quantity-btn"
+          >
+            -
+          </button>
+          
+          <input
+            type="number"
+            value={quantity}
+            onChange={handleQuantityChange}
+            onBlur={handleQuantityBlur}
+            min="1"
+            max={item.maxOrderQuantity}
+            className="quantity-input"
+          />
+          
+          <button 
+            onClick={handleIncrement}
+            disabled={quantity >= item.maxOrderQuantity || quantity >= item.stockQuantity}
+            className="quantity-btn"
+          >
+            +
+          </button>
+        </div>
+        
+        {/* **Display validation error inline** */}
+        {validationError && (
+          <div className="validation-error">
+            {validationError}
+          </div>
         )}
       </div>
-
-      <div className="item-quantity">
-        <button
-          onClick={() => handleQuantityChange(quantity - 1)}
-          disabled={isUpdating || quantity <= 1}
-          className="qty-btn"
-        >
-          -
-        </button>
-        <input
-          type="number"
-          value={quantity}
-          onChange={(e) => {
-            const newQty = parseInt(e.target.value) || 1;
-            handleQuantityChange(newQty);
-          }}
-          disabled={isUpdating}
-          min="1"
-          max={item.product.max_order_quantity}
-          className="qty-input"
-        />
-        <button
-          onClick={() => handleQuantityChange(quantity + 1)}
-          disabled={isUpdating || quantity >= item.product.max_order_quantity}
-          className="qty-btn"
-        >
-          +
-        </button>
-      </div>
-
+      
       <div className="item-total">
-        <p className="total-label">Total:</p>
-        <p className="total-amount">${itemTotal.toFixed(2)}</p>
+        <p className="total-price">${item.totalPrice.toFixed(2)}</p>
       </div>
-
+      
       <div className="item-actions">
-        <button
-          onClick={handleRemove}
-          disabled={isUpdating}
-          className="btn-remove"
-        >
+        <button onClick={handleRemove} className="remove-btn">
           Remove
         </button>
       </div>
@@ -413,1558 +999,1622 @@ const CartItem = ({ item }) => {
 export default CartItem;
 ```
 
-#### 3.2.3 Redux Actions for Cart Item
+### 3.4 Order Service
 
-```javascript
-// redux/cartSlice.js (additional actions)
-export const updateCartItem = createAsyncThunk(
-  'cart/updateCartItem',
-  async ({ itemId, quantity }, { rejectWithValue }) => {
-    try {
-      const response = await axios.put(
-        `${API_BASE_URL}/api/cart/items/${itemId}`,
-        { quantity },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
-);
+#### 3.4.1 Responsibilities
+- Order creation and management
+- Order status tracking
+- Payment processing integration
+- Order history
 
-export const removeCartItem = createAsyncThunk(
-  'cart/removeCartItem',
-  async (itemId, { rejectWithValue }) => {
-    try {
-      const response = await axios.delete(
-        `${API_BASE_URL}/api/cart/items/${itemId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
-);
+#### 3.4.2 State Machine - Order Status
 
-// Add to extraReducers in cartSlice
-// .addCase(updateCartItem.fulfilled, (state, action) => {
-//   state.items = action.payload.items;
-//   state.subtotal = action.payload.subtotal;
-//   state.tax = action.payload.tax;
-//   state.total = action.payload.total;
-// })
-// .addCase(removeCartItem.fulfilled, (state, action) => {
-//   state.items = action.payload.items;
-//   state.subtotal = action.payload.subtotal;
-//   state.tax = action.payload.tax;
-//   state.total = action.payload.total;
-// });
+```
+                    ┌─────────┐
+                    │ PENDING │
+                    └────┬────┘
+                         │
+                    ┌────▼────────┐
+              ┌────>│  CONFIRMED  │
+              │     └────┬────────┘
+              │          │
+              │     ┌────▼────────┐
+              │     │  PROCESSING │
+              │     └────┬────────┘
+              │          │
+              │     ┌────▼────────┐
+              │     │  SHIPPED    │
+              │     └────┬────────┘
+              │          │
+              │     ┌────▼────────┐
+              │     │  DELIVERED  │
+              │     └─────────────┘
+              │
+         ┌────┴────┐
+         │CANCELLED│
+         └─────────┘
 ```
 
-### 3.3 Shopping Cart Controller (Backend)
-
-#### 3.3.1 Controller Overview
-The Shopping Cart Controller handles HTTP requests related to cart operations and delegates business logic to the Shopping Cart Service.
-
-#### 3.3.2 Controller Implementation
+#### 3.4.3 Class Structure
 
 ```javascript
-// controllers/cartController.js
-const cartService = require('../services/cartService');
-const { validationResult } = require('express-validator');
-
-class CartController {
-  /**
-   * Get user's shopping cart
-   * GET /api/cart
-   */
-  async getCart(req, res) {
-    try {
-      const userId = req.user.id;
-      const cart = await cartService.getCartByUserId(userId);
-      
-      return res.status(200).json({
-        success: true,
-        data: cart,
-      });
-    } catch (error) {
-      console.error('Error fetching cart:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch cart',
-        error: error.message,
-      });
-    }
+class OrderController {
+  constructor(orderService, paymentService) {
+    this.orderService = orderService;
+    this.paymentService = paymentService;
   }
 
-  /**
-   * Add item to cart
-   * POST /api/cart/items
-   */
-  async addItem(req, res) {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array(),
-        });
-      }
-
-      const userId = req.user.id;
-      const { productId, quantity } = req.body;
-
-      const cart = await cartService.addItemToCart(userId, productId, quantity);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Item added to cart',
-        data: cart,
-      });
-    } catch (error) {
-      console.error('Error adding item to cart:', error);
-      
-      if (error.message.includes('not found')) {
-        return res.status(404).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      
-      if (error.message.includes('out of stock') || 
-          error.message.includes('exceeds available stock') ||
-          error.message.includes('exceeds maximum order quantity')) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to add item to cart',
-        error: error.message,
-      });
-    }
+  async createOrder(req, res) {
+    // Order creation logic
   }
 
-  /**
-   * Update cart item quantity
-   * PUT /api/cart/items/:itemId
-   */
-  async updateItem(req, res) {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array(),
-        });
-      }
-
-      const userId = req.user.id;
-      const { itemId } = req.params;
-      const { quantity } = req.body;
-
-      // Validate that updated quantity does not exceed max_order_quantity
-      const cart = await cartService.updateCartItemQuantity(
-        userId,
-        itemId,
-        quantity
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: 'Cart item updated',
-        data: cart,
-      });
-    } catch (error) {
-      console.error('Error updating cart item:', error);
-      
-      if (error.message.includes('not found')) {
-        return res.status(404).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      
-      if (error.message.includes('out of stock') || 
-          error.message.includes('exceeds available stock') ||
-          error.message.includes('exceeds maximum order quantity')) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to update cart item',
-        error: error.message,
-      });
-    }
+  async getOrder(req, res) {
+    // Order retrieval logic
   }
 
-  /**
-   * Remove item from cart
-   * DELETE /api/cart/items/:itemId
-   */
-  async removeItem(req, res) {
-    try {
-      const userId = req.user.id;
-      const { itemId } = req.params;
-
-      const cart = await cartService.removeItemFromCart(userId, itemId);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Item removed from cart',
-        data: cart,
-      });
-    } catch (error) {
-      console.error('Error removing cart item:', error);
-      
-      if (error.message.includes('not found')) {
-        return res.status(404).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to remove cart item',
-        error: error.message,
-      });
-    }
-  }
-
-  /**
-   * Clear entire cart
-   * DELETE /api/cart
-   */
-  async clearCart(req, res) {
-    try {
-      const userId = req.user.id;
-      await cartService.clearCart(userId);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Cart cleared successfully',
-        data: {
-          items: [],
-          subtotal: 0,
-          tax: 0,
-          total: 0,
-        },
-      });
-    } catch (error) {
-      console.error('Error clearing cart:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to clear cart',
-        error: error.message,
-      });
-    }
+  async updateOrderStatus(req, res) {
+    // Order status update logic
   }
 }
 
-module.exports = new CartController();
-```
-
-#### 3.3.3 Route Configuration
-
-```javascript
-// routes/cartRoutes.js
-const express = require('express');
-const router = express.Router();
-const cartController = require('../controllers/cartController');
-const authMiddleware = require('../middleware/authMiddleware');
-const { body, param } = require('express-validator');
-
-// All cart routes require authentication
-router.use(authMiddleware);
-
-// Validation middleware
-const addItemValidation = [
-  body('productId').isInt({ min: 1 }).withMessage('Valid product ID is required'),
-  body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-];
-
-const updateItemValidation = [
-  param('itemId').isInt({ min: 1 }).withMessage('Valid item ID is required'),
-  body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-];
-
-const removeItemValidation = [
-  param('itemId').isInt({ min: 1 }).withMessage('Valid item ID is required'),
-];
-
-// Routes
-router.get('/', cartController.getCart);
-router.post('/items', addItemValidation, cartController.addItem);
-router.put('/items/:itemId', updateItemValidation, cartController.updateItem);
-router.delete('/items/:itemId', removeItemValidation, cartController.removeItem);
-router.delete('/', cartController.clearCart);
-
-module.exports = router;
-```
-
-### 3.4 Shopping Cart Service (Backend)
-
-#### 3.4.1 Service Overview
-The Shopping Cart Service contains the core business logic for cart operations, including validation, calculation, and data persistence.
-
-#### 3.4.2 Service Implementation
-
-```javascript
-// services/cartService.js
-const db = require('../config/database');
-const productService = require('./productService');
-
-class CartService {
-  /**
-   * Get cart by user ID
-   */
-  async getCartByUserId(userId) {
-    try {
-      // Get cart
-      let cart = await db.query(
-        'SELECT * FROM carts WHERE user_id = $1',
-        [userId]
-      );
-
-      if (cart.rows.length === 0) {
-        // Create new cart if doesn't exist
-        cart = await db.query(
-          'INSERT INTO carts (user_id, created_at, updated_at) VALUES ($1, NOW(), NOW()) RETURNING *',
-          [userId]
-        );
-      }
-
-      const cartId = cart.rows[0].id;
-
-      // Get cart items with product details
-      const items = await db.query(
-        `SELECT ci.id, ci.quantity, ci.price_at_addition,
-                p.id as product_id, p.name, p.description, p.price, 
-                p.image_url, p.stock_quantity, p.max_order_quantity
-         FROM cart_items ci
-         JOIN products p ON ci.product_id = p.id
-         WHERE ci.cart_id = $1 AND ci.is_active = true`,
-        [cartId]
-      );
-
-      // Calculate totals
-      const { subtotal, tax, total } = this.calculateCartTotals(items.rows);
-
-      return {
-        id: cartId,
-        items: items.rows.map(item => ({
-          id: item.id,
-          quantity: item.quantity,
-          product: {
-            id: item.product_id,
-            name: item.name,
-            description: item.description,
-            price: parseFloat(item.price),
-            imageUrl: item.image_url,
-            stockQuantity: item.stock_quantity,
-            max_order_quantity: item.max_order_quantity,
-          },
-        })),
-        subtotal,
-        tax,
-        total,
-      };
-    } catch (error) {
-      console.error('Error in getCartByUserId:', error);
-      throw error;
-    }
+class OrderService {
+  constructor(orderRepository, inventoryService, notificationService) {
+    this.orderRepository = orderRepository;
+    this.inventoryService = inventoryService;
+    this.notificationService = notificationService;
   }
 
-  /**
-   * Add item to cart
-   */
-  async addItemToCart(userId, productId, quantity) {
-    try {
-      // Validate product exists and has sufficient stock
-      const product = await productService.getProductById(productId);
-      
-      if (!product) {
-        throw new Error('Product not found');
-      }
-
-      if (product.stock_quantity < quantity) {
-        throw new Error('Insufficient stock available');
-      }
-
-      if (product.max_order_quantity && quantity > product.max_order_quantity) {
-        throw new Error(
-          `Quantity exceeds maximum order quantity of ${product.max_order_quantity}`
-        );
-      }
-
-      // Get or create cart
-      let cart = await db.query(
-        'SELECT * FROM carts WHERE user_id = $1',
-        [userId]
-      );
-
-      let cartId;
-      if (cart.rows.length === 0) {
-        cart = await db.query(
-          'INSERT INTO carts (user_id, created_at, updated_at) VALUES ($1, NOW(), NOW()) RETURNING *',
-          [userId]
-        );
-        cartId = cart.rows[0].id;
-      } else {
-        cartId = cart.rows[0].id;
-      }
-
-      // Check if item already exists in cart
-      const existingItem = await db.query(
-        'SELECT * FROM cart_items WHERE cart_id = $1 AND product_id = $2 AND is_active = true',
-        [cartId, productId]
-      );
-
-      if (existingItem.rows.length > 0) {
-        // Update quantity
-        const newQuantity = existingItem.rows[0].quantity + quantity;
-        
-        if (product.stock_quantity < newQuantity) {
-          throw new Error('Requested quantity exceeds available stock');
-        }
-
-        if (product.max_order_quantity && newQuantity > product.max_order_quantity) {
-          throw new Error(
-            `Total quantity would exceed maximum order quantity of ${product.max_order_quantity}`
-          );
-        }
-
-        await db.query(
-          'UPDATE cart_items SET quantity = $1, updated_at = NOW() WHERE id = $2',
-          [newQuantity, existingItem.rows[0].id]
-        );
-      } else {
-        // Add new item
-        await db.query(
-          `INSERT INTO cart_items (cart_id, product_id, quantity, price_at_addition, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, NOW(), NOW())`,
-          [cartId, productId, quantity, product.price]
-        );
-      }
-
-      // Update cart timestamp
-      await db.query(
-        'UPDATE carts SET updated_at = NOW() WHERE id = $1',
-        [cartId]
-      );
-
-      // Return updated cart
-      return await this.getCartByUserId(userId);
-    } catch (error) {
-      console.error('Error in addItemToCart:', error);
-      throw error;
-    }
+  async createOrder(orderData) {
+    // Order creation with inventory check
   }
 
-  /**
-   * Update cart item quantity with automatic recalculation
-   */
-  async updateCartItemQuantity(userId, itemId, quantity) {
-    try {
-      // Get cart item
-      const item = await db.query(
-        `SELECT ci.*, c.user_id, p.stock_quantity, p.max_order_quantity
-         FROM cart_items ci
-         JOIN carts c ON ci.cart_id = c.id
-         JOIN products p ON ci.product_id = p.id
-         WHERE ci.id = $1 AND ci.is_active = true`,
-        [itemId]
-      );
-
-      if (item.rows.length === 0) {
-        throw new Error('Cart item not found');
-      }
-
-      if (item.rows[0].user_id !== userId) {
-        throw new Error('Unauthorized access to cart item');
-      }
-
-      const stockQuantity = item.rows[0].stock_quantity;
-      const maxOrderQuantity = item.rows[0].max_order_quantity;
-
-      if (quantity > stockQuantity) {
-        throw new Error('Requested quantity exceeds available stock');
-      }
-
-      // Validate against max_order_quantity on update
-      if (maxOrderQuantity && quantity > maxOrderQuantity) {
-        throw new Error(
-          `Quantity exceeds maximum order quantity of ${maxOrderQuantity}`
-        );
-      }
-
-      // Update quantity
-      await db.query(
-        'UPDATE cart_items SET quantity = $1, updated_at = NOW() WHERE id = $2',
-        [quantity, itemId]
-      );
-
-      // Update cart timestamp
-      await db.query(
-        'UPDATE carts SET updated_at = NOW() WHERE user_id = $1',
-        [userId]
-      );
-
-      // Automatic recalculation of subtotal and total upon quantity mutation
-      const updatedCart = await this.getCartByUserId(userId);
-      
-      // Recalculate and persist totals
-      const { subtotal, tax, total } = this.calculateCartTotals(updatedCart.items);
-      
-      await db.query(
-        'UPDATE carts SET subtotal = $1, tax = $2, total = $3, updated_at = NOW() WHERE user_id = $4',
-        [subtotal, tax, total, userId]
-      );
-
-      // Return updated cart with recalculated totals
-      return await this.getCartByUserId(userId);
-    } catch (error) {
-      console.error('Error in updateCartItemQuantity:', error);
-      throw error;
-    }
+  async processOrder(orderId) {
+    // Order processing logic
   }
 
-  /**
-   * Remove item from cart
-   */
-  async removeItemFromCart(userId, itemId) {
-    try {
-      // Verify item belongs to user's cart
-      const item = await db.query(
-        `SELECT ci.*, c.user_id
-         FROM cart_items ci
-         JOIN carts c ON ci.cart_id = c.id
-         WHERE ci.id = $1 AND ci.is_active = true`,
-        [itemId]
-      );
-
-      if (item.rows.length === 0) {
-        throw new Error('Cart item not found');
-      }
-
-      if (item.rows[0].user_id !== userId) {
-        throw new Error('Unauthorized access to cart item');
-      }
-
-      // Soft delete
-      await db.query(
-        'UPDATE cart_items SET is_active = false, updated_at = NOW() WHERE id = $1',
-        [itemId]
-      );
-
-      // Update cart timestamp
-      await db.query(
-        'UPDATE carts SET updated_at = NOW() WHERE user_id = $1',
-        [userId]
-      );
-
-      return await this.getCartByUserId(userId);
-    } catch (error) {
-      console.error('Error in removeItemFromCart:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Clear cart
-   */
-  async clearCart(userId) {
-    try {
-      const cart = await db.query(
-        'SELECT id FROM carts WHERE user_id = $1',
-        [userId]
-      );
-
-      if (cart.rows.length > 0) {
-        await db.query(
-          'UPDATE cart_items SET is_active = false, updated_at = NOW() WHERE cart_id = $1',
-          [cart.rows[0].id]
-        );
-
-        await db.query(
-          'UPDATE carts SET updated_at = NOW() WHERE id = $1',
-          [cart.rows[0].id]
-        );
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error in clearCart:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Calculate cart totals with automatic recalculation
-   */
-  calculateCartTotals(items) {
-    const subtotal = items.reduce((sum, item) => {
-      const itemPrice = parseFloat(item.price || item.product?.price || 0);
-      return sum + (itemPrice * item.quantity);
-    }, 0);
-
-    const taxRate = 0.08; // 8% tax rate
-    const tax = subtotal * taxRate;
-    const total = subtotal + tax;
-
-    return {
-      subtotal: parseFloat(subtotal.toFixed(2)),
-      tax: parseFloat(tax.toFixed(2)),
-      total: parseFloat(total.toFixed(2)),
-    };
-  }
-
-  /**
-   * Validate cart before checkout
-   */
-  async validateCart(userId) {
-    try {
-      const cart = await this.getCartByUserId(userId);
-
-      if (cart.items.length === 0) {
-        throw new Error('Cart is empty');
-      }
-
-      // Validate each item
-      for (const item of cart.items) {
-        const product = await productService.getProductById(item.product.id);
-        
-        if (!product) {
-          throw new Error(`Product ${item.product.name} is no longer available`);
-        }
-
-        if (product.stock_quantity < item.quantity) {
-          throw new Error(
-            `Insufficient stock for ${item.product.name}. Available: ${product.stock_quantity}`
-          );
-        }
-
-        if (product.max_order_quantity && item.quantity > product.max_order_quantity) {
-          throw new Error(
-            `Quantity for ${item.product.name} exceeds maximum order quantity of ${product.max_order_quantity}`
-          );
-        }
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error in validateCart:', error);
-      throw error;
-    }
+  async cancelOrder(orderId) {
+    // Order cancellation logic
   }
 }
-
-module.exports = new CartService();
 ```
 
-## 4. Database Design
+## 4. Data Models
 
-### 4.1 Schema Diagram
-
-```mermaid
-erDiagram
-    USERS ||--o{ CARTS : has
-    CARTS ||--o{ CART_ITEMS : contains
-    PRODUCTS ||--o{ CART_ITEMS : referenced_in
-    
-    USERS {
-        int id PK
-        string email
-        string password_hash
-        string first_name
-        string last_name
-        timestamp created_at
-        timestamp updated_at
-    }
-    
-    CARTS {
-        int id PK
-        int user_id FK
-        decimal subtotal
-        decimal tax
-        decimal total
-        timestamp created_at
-        timestamp updated_at
-    }
-    
-    CART_ITEMS {
-        int id PK
-        int cart_id FK
-        int product_id FK
-        int quantity
-        decimal price_at_addition
-        boolean is_active
-        timestamp created_at
-        timestamp updated_at
-    }
-    
-    PRODUCTS {
-        int id PK
-        string name
-        text description
-        decimal price
-        int stock_quantity
-        int max_order_quantity
-        string image_url
-        boolean is_active
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
-### 4.2 Table Definitions
-
-#### 4.2.1 Carts Table
+### 4.1 User Model
 
 ```sql
-CREATE TABLE carts (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    subtotal DECIMAL(10, 2) DEFAULT 0.00,
-    tax DECIMAL(10, 2) DEFAULT 0.00,
-    total DECIMAL(10, 2) DEFAULT 0.00,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_user_cart UNIQUE(user_id)
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    phone VARCHAR(20),
+    is_verified BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP
 );
 
-CREATE INDEX idx_carts_user_id ON carts(user_id);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_created_at ON users(created_at);
 ```
 
-#### 4.2.2 Cart Items Table
-
-```sql
-CREATE TABLE cart_items (
-    id SERIAL PRIMARY KEY,
-    cart_id INTEGER NOT NULL REFERENCES carts(id) ON DELETE CASCADE,
-    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    quantity INTEGER NOT NULL CHECK (quantity > 0),
-    price_at_addition DECIMAL(10, 2) NOT NULL,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_cart_product UNIQUE(cart_id, product_id, is_active)
-);
-
-CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
-CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
-CREATE INDEX idx_cart_items_is_active ON cart_items(is_active);
-```
-
-#### 4.2.3 Products Table
+### 4.2 Product Model
 
 ```sql
 CREATE TABLE products (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    price DECIMAL(10, 2) NOT NULL CHECK (price >= 0),
-    stock_quantity INTEGER NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
-    max_order_quantity INTEGER CHECK (max_order_quantity > 0),
+    sku VARCHAR(100) UNIQUE NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    category_id UUID REFERENCES categories(id),
+    brand VARCHAR(100),
     image_url VARCHAR(500),
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    max_order_quantity INTEGER DEFAULT 10,
+    min_order_quantity INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_products_is_active ON products(is_active);
-CREATE INDEX idx_products_name ON products(name);
+CREATE TABLE inventory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID REFERENCES products(id),
+    quantity INTEGER NOT NULL DEFAULT 0,
+    reserved_quantity INTEGER NOT NULL DEFAULT 0,
+    warehouse_location VARCHAR(100),
+    last_restocked TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_products_category ON products(category_id);
+CREATE INDEX idx_products_sku ON products(sku);
+CREATE INDEX idx_inventory_product ON inventory(product_id);
+```
+
+### 4.3 Shopping Cart Model
+
+```sql
+CREATE TABLE shopping_carts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    subtotal DECIMAL(10, 2) DEFAULT 0.00,
+    tax DECIMAL(10, 2) DEFAULT 0.00,
+    shipping DECIMAL(10, 2) DEFAULT 0.00,
+    total DECIMAL(10, 2) DEFAULT 0.00,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id)
+);
+
+CREATE TABLE cart_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cart_id UUID REFERENCES shopping_carts(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES products(id),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price DECIMAL(10, 2) NOT NULL,
+    total_price DECIMAL(10, 2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(cart_id, product_id)
+);
+
+CREATE INDEX idx_shopping_carts_user ON shopping_carts(user_id);
+CREATE INDEX idx_cart_items_cart ON cart_items(cart_id);
+CREATE INDEX idx_cart_items_product ON cart_items(product_id);
+
+-- Trigger to update cart updated_at timestamp when items change
+CREATE OR REPLACE FUNCTION update_cart_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE shopping_carts 
+    SET updated_at = CURRENT_TIMESTAMP 
+    WHERE id = NEW.cart_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER cart_items_update_trigger
+AFTER INSERT OR UPDATE OR DELETE ON cart_items
+FOR EACH ROW
+EXECUTE FUNCTION update_cart_timestamp();
+```
+
+### 4.4 Order Model
+
+```sql
+CREATE TABLE orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
+    order_number VARCHAR(50) UNIQUE NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    shipping_address_id UUID REFERENCES addresses(id),
+    billing_address_id UUID REFERENCES addresses(id),
+    payment_method VARCHAR(50),
+    payment_status VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID REFERENCES orders(id),
+    product_id UUID REFERENCES products(id),
+    quantity INTEGER NOT NULL,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    total_price DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_orders_user ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_order_items_order ON order_items(order_id);
+```
+
+### 4.5 Address Model
+
+```sql
+CREATE TABLE addresses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
+    address_type VARCHAR(50),
+    street_address VARCHAR(255) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100) NOT NULL,
+    postal_code VARCHAR(20) NOT NULL,
+    country VARCHAR(100) NOT NULL,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_addresses_user ON addresses(user_id);
 ```
 
 ## 5. API Specifications
 
-### 5.1 API Endpoints
+### 5.1 User APIs
 
-#### 5.1.1 Get Cart
+#### 5.1.1 Register User
+
+**Endpoint**: `POST /api/v1/users/register`
+
+**Request Body**:
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!",
+  "firstName": "John",
+  "lastName": "Doe",
+  "phone": "+1234567890"
+}
 ```
-GET /api/cart
-Authorization: Bearer {token}
 
-Response 200:
+**Response** (201 Created):
+```json
 {
   "success": true,
   "data": {
-    "id": 1,
-    "items": [
+    "userId": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "user@example.com",
+    "firstName": "John",
+    "lastName": "Doe"
+  },
+  "message": "User registered successfully"
+}
+```
+
+#### 5.1.2 Login
+
+**Endpoint**: `POST /api/v1/users/login`
+
+**Request Body**:
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "userId": "123e4567-e89b-12d3-a456-426614174000",
+      "email": "user@example.com",
+      "firstName": "John",
+      "lastName": "Doe"
+    }
+  }
+}
+```
+
+### 5.2 Product APIs
+
+#### 5.2.1 Get Products
+
+**Endpoint**: `GET /api/v1/products`
+
+**Query Parameters**:
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `category` (optional): Filter by category
+- `search` (optional): Search term
+- `minPrice` (optional): Minimum price
+- `maxPrice` (optional): Maximum price
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "products": [
       {
-        "id": 1,
-        "quantity": 2,
-        "product": {
-          "id": 101,
-          "name": "Product Name",
-          "description": "Product description",
-          "price": 29.99,
-          "imageUrl": "https://example.com/image.jpg",
-          "stockQuantity": 50,
-          "max_order_quantity": 10
-        }
+        "id": "123e4567-e89b-12d3-a456-426614174001",
+        "name": "Product Name",
+        "description": "Product description",
+        "price": 99.99,
+        "sku": "PROD-001",
+        "category": "Electronics",
+        "imageUrl": "https://cdn.example.com/image.jpg",
+        "inStock": true
       }
     ],
-    "subtotal": 59.98,
-    "tax": 4.80,
-    "total": 64.78
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 10,
+      "totalItems": 200,
+      "itemsPerPage": 20
+    }
   }
 }
 ```
 
-#### 5.1.2 Add Item to Cart
-```
-POST /api/cart/items
-Authorization: Bearer {token}
-Content-Type: application/json
+#### 5.2.2 Get Product Details
 
-Request Body:
+**Endpoint**: `GET /api/v1/products/:productId`
+
+**Response** (200 OK):
+```json
 {
-  "productId": 101,
+  "success": true,
+  "data": {
+    "id": "123e4567-e89b-12d3-a456-426614174001",
+    "name": "Product Name",
+    "description": "Detailed product description",
+    "price": 99.99,
+    "sku": "PROD-001",
+    "category": {
+      "id": "cat-001",
+      "name": "Electronics"
+    },
+    "brand": "Brand Name",
+    "images": [
+      "https://cdn.example.com/image1.jpg",
+      "https://cdn.example.com/image2.jpg"
+    ],
+    "specifications": {
+      "weight": "500g",
+      "dimensions": "10x10x5 cm"
+    },
+    "inventory": {
+      "inStock": true,
+      "quantity": 50
+    }
+  }
+}
+```
+
+### 5.3 Shopping Cart APIs
+
+#### 5.3.1 Get Cart
+
+**Endpoint**: `GET /api/v1/cart`
+
+**Headers**:
+- `Authorization`: Bearer {token}
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "cart-123",
+    "userId": "user-456",
+    "items": [
+      {
+        "id": "item-789",
+        "productId": "prod-001",
+        "productName": "Product Name",
+        "productImage": "https://cdn.example.com/image.jpg",
+        "quantity": 2,
+        "unitPrice": 99.99,
+        "totalPrice": 199.98,
+        "maxOrderQuantity": 10,
+        "stockQuantity": 50
+      }
+    ],
+    "subtotal": 199.98,
+    "tax": 19.99,
+    "shipping": 0.00,
+    "total": 219.97
+  }
+}
+```
+
+#### 5.3.2 Add Item to Cart
+
+**Endpoint**: `POST /api/v1/cart/items`
+
+**Headers**:
+- `Authorization`: Bearer {token}
+
+**Request Body**:
+```json
+{
+  "productId": "prod-001",
   "quantity": 2
 }
+```
 
-Response 200:
+**Response** (200 OK):
+```json
 {
   "success": true,
-  "message": "Item added to cart",
   "data": {
-    "id": 1,
+    "id": "cart-123",
     "items": [...],
-    "subtotal": 59.98,
-    "tax": 4.80,
-    "total": 64.78
+    "subtotal": 199.98,
+    "tax": 19.99,
+    "shipping": 0.00,
+    "total": 219.97
   }
 }
+```
 
-Error Response 400:
+**Error Response** (400 Bad Request) - Quantity Exceeds Limit:
+```json
 {
   "success": false,
-  "message": "Quantity exceeds maximum order quantity of 10"
+  "error": "QUANTITY_EXCEEDS_LIMIT",
+  "message": "Quantity cannot exceed 10 units",
+  "maxAllowed": 10
 }
 ```
 
-#### 5.1.3 Update Cart Item
-```
-PUT /api/cart/items/:itemId
-Authorization: Bearer {token}
-Content-Type: application/json
+#### 5.3.3 Update Cart Item Quantity
 
-Request Body:
+**Endpoint**: `PUT /api/v1/cart/items/:cartItemId`
+
+**Headers**:
+- `Authorization`: Bearer {token}
+
+**Request Body**:
+```json
 {
-  "quantity": 3
+  "quantity": 5
 }
+```
 
-Response 200:
+**Response** (200 OK):
+```json
 {
   "success": true,
-  "message": "Cart item updated",
   "data": {
-    "id": 1,
+    "id": "cart-123",
     "items": [...],
-    "subtotal": 89.97,
-    "tax": 7.20,
-    "total": 97.17
+    "subtotal": 499.95,
+    "tax": 49.99,
+    "shipping": 0.00,
+    "total": 549.94
   }
 }
+```
 
-Error Response 400:
+**Error Response** (400 Bad Request) - Quantity Exceeds Maximum:
+```json
 {
   "success": false,
-  "message": "Quantity exceeds maximum order quantity of 10"
+  "error": "QUANTITY_EXCEEDS_LIMIT",
+  "message": "Quantity cannot exceed 10 units for this product",
+  "maxAllowed": 10,
+  "currentQuantity": 2
 }
 ```
 
-#### 5.1.4 Remove Cart Item
-```
-DELETE /api/cart/items/:itemId
-Authorization: Bearer {token}
-
-Response 200:
+**Error Response** (400 Bad Request) - Quantity Below Minimum:
+```json
 {
-  "success": true,
-  "message": "Item removed from cart",
-  "data": {
-    "id": 1,
-    "items": [...],
-    "subtotal": 29.99,
-    "tax": 2.40,
-    "total": 32.39
-  }
+  "success": false,
+  "error": "QUANTITY_BELOW_MINIMUM",
+  "message": "Quantity must be at least 1 units",
+  "minRequired": 1
 }
 ```
 
-#### 5.1.5 Clear Cart
-```
-DELETE /api/cart
-Authorization: Bearer {token}
+#### 5.3.4 Remove Item from Cart
 
-Response 200:
+**Endpoint**: `DELETE /api/v1/cart/items/:cartItemId`
+
+**Headers**:
+- `Authorization`: Bearer {token}
+
+**Response** (200 OK):
+```json
 {
   "success": true,
-  "message": "Cart cleared successfully",
   "data": {
+    "id": "cart-123",
     "items": [],
-    "subtotal": 0,
-    "tax": 0,
-    "total": 0
+    "subtotal": 0.00,
+    "tax": 0.00,
+    "shipping": 0.00,
+    "total": 0.00
   }
 }
 ```
 
-## 6. Data Flow Diagrams
+### 5.4 Order APIs
 
-### 6.1 Add to Cart Flow
+#### 5.4.1 Create Order
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant Controller
-    participant Service
-    participant Database
-    participant ProductService
+**Endpoint**: `POST /api/v1/orders`
 
-    User->>Frontend: Click "Add to Cart"
-    Frontend->>Controller: POST /api/cart/items
-    Controller->>Service: addItemToCart(userId, productId, quantity)
-    Service->>ProductService: getProductById(productId)
-    ProductService-->>Service: Product details
-    Service->>Service: Validate stock & max_order_quantity
-    Service->>Database: Check existing cart item
-    Database-->>Service: Existing item or null
-    alt Item exists
-        Service->>Database: UPDATE cart_items quantity
-    else New item
-        Service->>Database: INSERT cart_items
-    end
-    Service->>Database: UPDATE carts timestamp
-    Service->>Service: Calculate totals
-    Service-->>Controller: Updated cart
-    Controller-->>Frontend: Cart data
-    Frontend-->>User: Display updated cart
-```
+**Headers**:
+- `Authorization`: Bearer {token}
 
-### 6.2 Update Quantity Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant Controller
-    participant Service
-    participant Database
-
-    User->>Frontend: Change quantity
-    Frontend->>Frontend: Validate max_order_quantity
-    alt Exceeds max_order_quantity
-        Frontend-->>User: Show alert message
-    else Valid quantity
-        Frontend->>Controller: PUT /api/cart/items/:itemId
-        Controller->>Service: updateCartItemQuantity(userId, itemId, quantity)
-        Service->>Database: Get cart item with product details
-        Database-->>Service: Item with stock & max_order_quantity
-        Service->>Service: Validate stock & max_order_quantity
-        alt Validation fails
-            Service-->>Controller: Error
-            Controller-->>Frontend: Error response
-            Frontend-->>User: Show error
-        else Validation passes
-            Service->>Database: UPDATE cart_items quantity
-            Service->>Service: Recalculate totals
-            Service->>Database: UPDATE carts totals
-            Service-->>Controller: Updated cart
-            Controller-->>Frontend: Cart data
-            Frontend-->>User: Display updated cart
-        end
-    end
-```
-
-## 7. Error Handling
-
-### 7.1 Error Types
-
-```javascript
-// utils/errors.js
-class AppError extends Error {
-  constructor(message, statusCode) {
-    super(message);
-    this.statusCode = statusCode;
-    this.isOperational = true;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
-
-class ValidationError extends AppError {
-  constructor(message) {
-    super(message, 400);
-  }
-}
-
-class NotFoundError extends AppError {
-  constructor(message) {
-    super(message, 404);
-  }
-}
-
-class UnauthorizedError extends AppError {
-  constructor(message) {
-    super(message, 401);
-  }
-}
-
-class InsufficientStockError extends AppError {
-  constructor(message) {
-    super(message, 400);
-  }
-}
-
-class MaxOrderQuantityError extends AppError {
-  constructor(message) {
-    super(message, 400);
-  }
-}
-
-module.exports = {
-  AppError,
-  ValidationError,
-  NotFoundError,
-  UnauthorizedError,
-  InsufficientStockError,
-  MaxOrderQuantityError,
-};
-```
-
-### 7.2 Global Error Handler
-
-```javascript
-// middleware/errorHandler.js
-const errorHandler = (err, req, res, next) => {
-  let error = { ...err };
-  error.message = err.message;
-
-  // Log error for debugging
-  console.error(err);
-
-  // Mongoose bad ObjectId
-  if (err.name === 'CastError') {
-    const message = 'Resource not found';
-    error = new NotFoundError(message);
-  }
-
-  // Mongoose duplicate key
-  if (err.code === 11000) {
-    const message = 'Duplicate field value entered';
-    error = new ValidationError(message);
-  }
-
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message);
-    error = new ValidationError(message);
-  }
-
-  res.status(error.statusCode || 500).json({
-    success: false,
-    error: error.message || 'Server Error',
-  });
-};
-
-module.exports = errorHandler;
-```
-
-## 8. Security Considerations
-
-### 8.1 Authentication Middleware
-
-```javascript
-// middleware/authMiddleware.js
-const jwt = require('jsonwebtoken');
-const { UnauthorizedError } = require('../utils/errors');
-
-const authMiddleware = async (req, res, next) => {
-  try {
-    let token;
-
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
+**Request Body**:
+```json
+{
+  "items": [
+    {
+      "productId": "123e4567-e89b-12d3-a456-426614174001",
+      "quantity": 2
     }
+  ],
+  "shippingAddressId": "addr-001",
+  "billingAddressId": "addr-001",
+  "paymentMethod": "credit_card"
+}
+```
 
-    if (!token) {
-      throw new UnauthorizedError('Not authorized to access this route');
-    }
+**Response** (201 Created):
+```json
+{
+  "success": true,
+  "data": {
+    "orderId": "123e4567-e89b-12d3-a456-426614174002",
+    "orderNumber": "ORD-2024-001",
+    "status": "PENDING",
+    "totalAmount": 199.98,
+    "items": [
+      {
+        "productId": "123e4567-e89b-12d3-a456-426614174001",
+        "productName": "Product Name",
+        "quantity": 2,
+        "unitPrice": 99.99,
+        "totalPrice": 199.98
+      }
+    ],
+    "createdAt": "2024-01-15T10:30:00Z"
+  }
+}
+```
 
+#### 5.4.2 Get Order Details
+
+**Endpoint**: `GET /api/v1/orders/:orderId`
+
+**Headers**:
+- `Authorization`: Bearer {token}
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "orderId": "123e4567-e89b-12d3-a456-426614174002",
+    "orderNumber": "ORD-2024-001",
+    "status": "PROCESSING",
+    "totalAmount": 199.98,
+    "items": [
+      {
+        "productId": "123e4567-e89b-12d3-a456-426614174001",
+        "productName": "Product Name",
+        "quantity": 2,
+        "unitPrice": 99.99,
+        "totalPrice": 199.98
+      }
+    ],
+    "shippingAddress": {
+      "street": "123 Main St",
+      "city": "New York",
+      "state": "NY",
+      "postalCode": "10001",
+      "country": "USA"
+    },
+    "paymentStatus": "PAID",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T11:00:00Z"
+  }
+}
+```
+
+## 6. Security Design
+
+### 6.1 Authentication
+
+#### 6.1.1 JWT Token Structure
+
+```javascript
+// Token Payload
+{
+  "userId": "123e4567-e89b-12d3-a456-426614174000",
+  "email": "user@example.com",
+  "role": "customer",
+  "iat": 1642248000,
+  "exp": 1642334400
+}
+
+// Token Generation
+class JWTService {
+  generateAccessToken(user) {
+    return jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+  }
+
+  generateRefreshToken(user) {
+    return jwt.sign(
+      { userId: user.id },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: '7d' }
+    );
+  }
+
+  verifyToken(token) {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = decoded;
-      next();
-    } catch (err) {
-      throw new UnauthorizedError('Not authorized to access this route');
+      return jwt.verify(token, process.env.JWT_SECRET);
+    } catch (error) {
+      throw new UnauthorizedError('Invalid token');
     }
+  }
+}
+```
+
+#### 6.1.2 Password Hashing
+
+```javascript
+class PasswordService {
+  async hashPassword(password) {
+    const saltRounds = 12;
+    return await bcrypt.hash(password, saltRounds);
+  }
+
+  async comparePassword(password, hash) {
+    return await bcrypt.compare(password, hash);
+  }
+
+  validatePasswordStrength(password) {
+    const minLength = 8;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*]/.test(password);
+
+    return (
+      password.length >= minLength &&
+      hasUpperCase &&
+      hasLowerCase &&
+      hasNumbers &&
+      hasSpecialChar
+    );
+  }
+}
+```
+
+### 6.2 Authorization
+
+#### 6.2.1 Role-Based Access Control (RBAC)
+
+```javascript
+class AuthorizationMiddleware {
+  checkRole(allowedRoles) {
+    return (req, res, next) => {
+      const userRole = req.user.role;
+      
+      if (!allowedRoles.includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+      
+      next();
+    };
+  }
+
+  checkOwnership(resourceType) {
+    return async (req, res, next) => {
+      const userId = req.user.userId;
+      const resourceId = req.params.id;
+      
+      const resource = await this.getResource(resourceType, resourceId);
+      
+      if (resource.userId !== userId && req.user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+      
+      next();
+    };
+  }
+}
+
+// Usage
+router.get(
+  '/orders/:id',
+  authenticate,
+  authorizationMiddleware.checkOwnership('order'),
+  orderController.getOrder
+);
+
+router.post(
+  '/products',
+  authenticate,
+  authorizationMiddleware.checkRole(['admin', 'seller']),
+  productController.createProduct
+);
+```
+
+### 6.3 Data Encryption
+
+#### 6.3.1 Sensitive Data Encryption
+
+```javascript
+class EncryptionService {
+  constructor() {
+    this.algorithm = 'aes-256-gcm';
+    this.key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+  }
+
+  encrypt(text) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
+    
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    const authTag = cipher.getAuthTag();
+    
+    return {
+      encrypted,
+      iv: iv.toString('hex'),
+      authTag: authTag.toString('hex')
+    };
+  }
+
+  decrypt(encrypted, iv, authTag) {
+    const decipher = crypto.createDecipheriv(
+      this.algorithm,
+      this.key,
+      Buffer.from(iv, 'hex')
+    );
+    
+    decipher.setAuthTag(Buffer.from(authTag, 'hex'));
+    
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  }
+}
+```
+
+### 6.4 API Security
+
+#### 6.4.1 Rate Limiting
+
+```javascript
+class RateLimiter {
+  constructor(redisClient) {
+    this.redis = redisClient;
+  }
+
+  async checkLimit(identifier, maxRequests, windowSeconds) {
+    const key = `rate_limit:${identifier}`;
+    const current = await this.redis.incr(key);
+    
+    if (current === 1) {
+      await this.redis.expire(key, windowSeconds);
+    }
+    
+    if (current > maxRequests) {
+      const ttl = await this.redis.ttl(key);
+      throw new RateLimitError(`Rate limit exceeded. Try again in ${ttl} seconds`);
+    }
+    
+    return {
+      remaining: maxRequests - current,
+      reset: Date.now() + (windowSeconds * 1000)
+    };
+  }
+}
+
+// Middleware
+const rateLimitMiddleware = async (req, res, next) => {
+  try {
+    const identifier = req.user?.userId || req.ip;
+    const limit = await rateLimiter.checkLimit(identifier, 100, 60);
+    
+    res.set({
+      'X-RateLimit-Remaining': limit.remaining,
+      'X-RateLimit-Reset': limit.reset
+    });
+    
+    next();
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(429).json({
+        success: false,
+        message: error.message
+      });
+    }
     next(error);
   }
 };
-
-module.exports = authMiddleware;
 ```
 
-### 8.2 Input Validation
+#### 6.4.2 Input Validation
 
 ```javascript
-// middleware/validation.js
-const { body, param, validationResult } = require('express-validator');
+class ValidationService {
+  validateUserRegistration(data) {
+    const schema = Joi.object({
+      email: Joi.string().email().required(),
+      password: Joi.string().min(8).required(),
+      firstName: Joi.string().min(2).max(50).required(),
+      lastName: Joi.string().min(2).max(50).required(),
+      phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional()
+    });
+    
+    return schema.validate(data);
+  }
 
-const validateAddToCart = [
-  body('productId')
-    .isInt({ min: 1 })
-    .withMessage('Valid product ID is required'),
-  body('quantity')
-    .isInt({ min: 1, max: 1000 })
-    .withMessage('Quantity must be between 1 and 1000'),
-];
+  validateProductCreation(data) {
+    const schema = Joi.object({
+      name: Joi.string().min(3).max(255).required(),
+      description: Joi.string().max(2000).optional(),
+      price: Joi.number().positive().precision(2).required(),
+      sku: Joi.string().alphanum().required(),
+      categoryId: Joi.string().uuid().required(),
+      brand: Joi.string().max(100).optional()
+    });
+    
+    return schema.validate(data);
+  }
 
-const validateUpdateCartItem = [
-  param('itemId')
-    .isInt({ min: 1 })
-    .withMessage('Valid item ID is required'),
-  body('quantity')
-    .isInt({ min: 1, max: 1000 })
-    .withMessage('Quantity must be between 1 and 1000'),
-];
-
-const handleValidationErrors = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      errors: errors.array(),
+  sanitizeInput(input) {
+    // Remove potentially dangerous characters
+    return input.replace(/[<>"'&]/g, (char) => {
+      const entities = {
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#x27;',
+        '&': '&amp;'
+      };
+      return entities[char];
     });
   }
-  next();
-};
-
-module.exports = {
-  validateAddToCart,
-  validateUpdateCartItem,
-  handleValidationErrors,
-};
+}
 ```
 
-## 9. Testing Strategy
+## 7. Performance Considerations
 
-### 9.1 Unit Tests
+### 7.1 Caching Strategy
 
-```javascript
-// tests/services/cartService.test.js
-const cartService = require('../../services/cartService');
-const db = require('../../config/database');
-const productService = require('../../services/productService');
-
-jest.mock('../../config/database');
-jest.mock('../../services/productService');
-
-describe('CartService', () => {
-  describe('addItemToCart', () => {
-    it('should add item to cart successfully', async () => {
-      const mockProduct = {
-        id: 1,
-        name: 'Test Product',
-        price: 29.99,
-        stock_quantity: 100,
-        max_order_quantity: 10,
-      };
-
-      productService.getProductById.mockResolvedValue(mockProduct);
-      db.query.mockResolvedValueOnce({ rows: [] }); // No existing cart
-      db.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // Create cart
-      db.query.mockResolvedValueOnce({ rows: [] }); // No existing item
-      db.query.mockResolvedValueOnce({ rows: [] }); // Insert item
-
-      const result = await cartService.addItemToCart(1, 1, 2);
-
-      expect(result).toBeDefined();
-      expect(productService.getProductById).toHaveBeenCalledWith(1);
-    });
-
-    it('should throw error when quantity exceeds max_order_quantity', async () => {
-      const mockProduct = {
-        id: 1,
-        name: 'Test Product',
-        price: 29.99,
-        stock_quantity: 100,
-        max_order_quantity: 5,
-      };
-
-      productService.getProductById.mockResolvedValue(mockProduct);
-
-      await expect(
-        cartService.addItemToCart(1, 1, 10)
-      ).rejects.toThrow('exceeds maximum order quantity');
-    });
-
-    it('should throw error when insufficient stock', async () => {
-      const mockProduct = {
-        id: 1,
-        name: 'Test Product',
-        price: 29.99,
-        stock_quantity: 2,
-        max_order_quantity: 10,
-      };
-
-      productService.getProductById.mockResolvedValue(mockProduct);
-
-      await expect(
-        cartService.addItemToCart(1, 1, 5)
-      ).rejects.toThrow('Insufficient stock');
-    });
-  });
-
-  describe('calculateCartTotals', () => {
-    it('should calculate totals correctly', () => {
-      const items = [
-        { quantity: 2, product: { price: 10.00 } },
-        { quantity: 1, product: { price: 15.00 } },
-      ];
-
-      const result = cartService.calculateCartTotals(items);
-
-      expect(result.subtotal).toBe(35.00);
-      expect(result.tax).toBe(2.80); // 8% of 35.00
-      expect(result.total).toBe(37.80);
-    });
-  });
-});
-```
-
-### 9.2 Integration Tests
+#### 7.1.1 Redis Cache Implementation
 
 ```javascript
-// tests/integration/cart.test.js
-const request = require('supertest');
-const app = require('../../app');
-const db = require('../../config/database');
-
-describe('Cart API Integration Tests', () => {
-  let authToken;
-  let userId;
-
-  beforeAll(async () => {
-    // Setup test database and get auth token
-    const response = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: 'test@example.com',
-        password: 'password123',
-      });
-
-    authToken = response.body.token;
-    userId = response.body.user.id;
-  });
-
-  afterAll(async () => {
-    // Cleanup test data
-    await db.query('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id = $1)', [userId]);
-    await db.query('DELETE FROM carts WHERE user_id = $1', [userId]);
-  });
-
-  describe('POST /api/cart/items', () => {
-    it('should add item to cart', async () => {
-      const response = await request(app)
-        .post('/api/cart/items')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          productId: 1,
-          quantity: 2,
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.items).toHaveLength(1);
-    });
-
-    it('should return error when quantity exceeds max_order_quantity', async () => {
-      const response = await request(app)
-        .post('/api/cart/items')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          productId: 1,
-          quantity: 100,
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('maximum order quantity');
-    });
-  });
-
-  describe('PUT /api/cart/items/:itemId', () => {
-    it('should update cart item quantity', async () => {
-      // First add an item
-      const addResponse = await request(app)
-        .post('/api/cart/items')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          productId: 1,
-          quantity: 2,
-        });
-
-      const itemId = addResponse.body.data.items[0].id;
-
-      // Then update it
-      const updateResponse = await request(app)
-        .put(`/api/cart/items/${itemId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          quantity: 3,
-        });
-
-      expect(updateResponse.status).toBe(200);
-      expect(updateResponse.body.success).toBe(true);
-      expect(updateResponse.body.data.items[0].quantity).toBe(3);
-    });
-  });
-});
-```
-
-## 10. Performance Optimization
-
-### 10.1 Caching Strategy
-
-```javascript
-// services/cacheService.js
-const redis = require('redis');
-const client = redis.createClient({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT,
-});
-
 class CacheService {
-  async get(key) {
-    return new Promise((resolve, reject) => {
-      client.get(key, (err, data) => {
-        if (err) reject(err);
-        resolve(data ? JSON.parse(data) : null);
-      });
-    });
+  constructor(redisClient) {
+    this.redis = redisClient;
+    this.defaultTTL = 3600; // 1 hour
   }
 
-  async set(key, value, expiration = 3600) {
-    return new Promise((resolve, reject) => {
-      client.setex(key, expiration, JSON.stringify(value), (err) => {
-        if (err) reject(err);
-        resolve(true);
-      });
-    });
+  async get(key) {
+    const cached = await this.redis.get(key);
+    return cached ? JSON.parse(cached) : null;
+  }
+
+  async set(key, value, ttl = this.defaultTTL) {
+    await this.redis.setex(key, ttl, JSON.stringify(value));
   }
 
   async delete(key) {
-    return new Promise((resolve, reject) => {
-      client.del(key, (err) => {
-        if (err) reject(err);
-        resolve(true);
-      });
+    await this.redis.del(key);
+  }
+
+  async invalidatePattern(pattern) {
+    const keys = await this.redis.keys(pattern);
+    if (keys.length > 0) {
+      await this.redis.del(...keys);
+    }
+  }
+}
+
+// Usage in Product Service
+class ProductService {
+  async getProductById(productId) {
+    const cacheKey = `product:${productId}`;
+    
+    // Try cache first
+    let product = await this.cacheService.get(cacheKey);
+    
+    if (!product) {
+      // Cache miss - fetch from database
+      product = await this.productRepository.findById(productId);
+      
+      if (product) {
+        // Store in cache
+        await this.cacheService.set(cacheKey, product, 3600);
+      }
+    }
+    
+    return product;
+  }
+
+  async updateProduct(productId, updateData) {
+    const product = await this.productRepository.update(productId, updateData);
+    
+    // Invalidate cache
+    await this.cacheService.delete(`product:${productId}`);
+    await this.cacheService.invalidatePattern('products:list:*');
+    
+    return product;
+  }
+}
+```
+
+#### 7.1.2 Cache Warming
+
+```javascript
+class CacheWarmer {
+  constructor(cacheService, productService) {
+    this.cacheService = cacheService;
+    this.productService = productService;
+  }
+
+  async warmPopularProducts() {
+    // Get top 100 popular products
+    const popularProducts = await this.productService.getPopularProducts(100);
+    
+    for (const product of popularProducts) {
+      const cacheKey = `product:${product.id}`;
+      await this.cacheService.set(cacheKey, product, 7200); // 2 hours
+    }
+  }
+
+  async warmCategories() {
+    const categories = await this.categoryService.getAllCategories();
+    await this.cacheService.set('categories:all', categories, 86400); // 24 hours
+  }
+
+  async scheduleWarming() {
+    // Run every hour
+    setInterval(async () => {
+      await this.warmPopularProducts();
+      await this.warmCategories();
+    }, 3600000);
+  }
+}
+```
+
+### 7.2 Database Optimization
+
+#### 7.2.1 Query Optimization
+
+```javascript
+class ProductRepository {
+  async findProductsWithPagination(filters, page, limit) {
+    const offset = (page - 1) * limit;
+    
+    // Optimized query with proper indexing
+    const query = `
+      SELECT 
+        p.id,
+        p.name,
+        p.price,
+        p.sku,
+        c.name as category_name,
+        i.quantity as stock_quantity
+      FROM products p
+      INNER JOIN categories c ON p.category_id = c.id
+      LEFT JOIN inventory i ON p.id = i.product_id
+      WHERE p.is_active = true
+        AND ($1::uuid IS NULL OR p.category_id = $1)
+        AND ($2::decimal IS NULL OR p.price >= $2)
+        AND ($3::decimal IS NULL OR p.price <= $3)
+        AND ($4::text IS NULL OR p.name ILIKE $4)
+      ORDER BY p.created_at DESC
+      LIMIT $5 OFFSET $6
+    `;
+    
+    const searchPattern = filters.search ? `%${filters.search}%` : null;
+    
+    const result = await this.db.query(query, [
+      filters.categoryId || null,
+      filters.minPrice || null,
+      filters.maxPrice || null,
+      searchPattern,
+      limit,
+      offset
+    ]);
+    
+    return result.rows;
+  }
+
+  async getProductWithDetails(productId) {
+    // Single query with joins instead of multiple queries
+    const query = `
+      SELECT 
+        p.*,
+        c.name as category_name,
+        i.quantity as stock_quantity,
+        i.reserved_quantity,
+        json_agg(
+          json_build_object(
+            'url', pi.image_url,
+            'alt', pi.alt_text,
+            'order', pi.display_order
+          ) ORDER BY pi.display_order
+        ) as images
+      FROM products p
+      INNER JOIN categories c ON p.category_id = c.id
+      LEFT JOIN inventory i ON p.id = i.product_id
+      LEFT JOIN product_images pi ON p.id = pi.product_id
+      WHERE p.id = $1
+      GROUP BY p.id, c.name, i.quantity, i.reserved_quantity
+    `;
+    
+    const result = await this.db.query(query, [productId]);
+    return result.rows[0];
+  }
+}
+```
+
+#### 7.2.2 Connection Pooling
+
+```javascript
+const { Pool } = require('pg');
+
+class DatabaseConnection {
+  constructor() {
+    this.pool = new Pool({
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT,
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      max: 20, // Maximum number of clients
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    });
+
+    this.pool.on('error', (err) => {
+      console.error('Unexpected error on idle client', err);
     });
   }
 
-  generateCartKey(userId) {
-    return `cart:user:${userId}`;
+  async query(text, params) {
+    const start = Date.now();
+    const result = await this.pool.query(text, params);
+    const duration = Date.now() - start;
+    
+    // Log slow queries
+    if (duration > 1000) {
+      console.warn('Slow query detected', { text, duration });
+    }
+    
+    return result;
+  }
+
+  async getClient() {
+    return await this.pool.connect();
+  }
+}
+```
+
+### 7.3 Load Balancing
+
+#### 7.3.1 Application Load Balancing
+
+```javascript
+// Nginx Configuration
+const nginxConfig = `
+upstream api_backend {
+    least_conn;
+    server api1.example.com:3000 weight=3;
+    server api2.example.com:3000 weight=3;
+    server api3.example.com:3000 weight=2;
+    server api4.example.com:3000 backup;
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+
+    location / {
+        proxy_pass http://api_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        // Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        
+        // Health check
+        proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
+    }
+
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+    }
+}
+`;
+```
+
+### 7.4 Asynchronous Processing
+
+#### 7.4.1 Message Queue Implementation
+
+```javascript
+class MessageQueueService {
+  constructor(rabbitMQConnection) {
+    this.connection = rabbitMQConnection;
+    this.channel = null;
+  }
+
+  async initialize() {
+    this.channel = await this.connection.createChannel();
+    
+    // Declare exchanges
+    await this.channel.assertExchange('orders', 'topic', { durable: true });
+    await this.channel.assertExchange('notifications', 'fanout', { durable: true });
+    
+    // Declare queues
+    await this.channel.assertQueue('order.processing', { durable: true });
+    await this.channel.assertQueue('email.notifications', { durable: true });
+    await this.channel.assertQueue('inventory.updates', { durable: true });
+  }
+
+  async publishOrderEvent(orderData, routingKey) {
+    const message = JSON.stringify(orderData);
+    
+    this.channel.publish(
+      'orders',
+      routingKey,
+      Buffer.from(message),
+      { persistent: true }
+    );
+  }
+
+  async consumeOrderEvents(callback) {
+    await this.channel.bindQueue('order.processing', 'orders', 'order.*');
+    
+    this.channel.consume('order.processing', async (msg) => {
+      if (msg) {
+        try {
+          const orderData = JSON.parse(msg.content.toString());
+          await callback(orderData);
+          this.channel.ack(msg);
+        } catch (error) {
+          console.error('Error processing order event:', error);
+          // Requeue or send to dead letter queue
+          this.channel.nack(msg, false, false);
+        }
+      }
+    });
   }
 }
 
-module.exports = new CacheService();
+// Usage
+class OrderProcessor {
+  constructor(messageQueue, orderService) {
+    this.messageQueue = messageQueue;
+    this.orderService = orderService;
+  }
+
+  async start() {
+    await this.messageQueue.consumeOrderEvents(async (orderData) => {
+      await this.processOrder(orderData);
+    });
+  }
+
+  async processOrder(orderData) {
+    // Process order asynchronously
+    await this.orderService.processPayment(orderData.orderId);
+    await this.orderService.updateInventory(orderData.items);
+    await this.orderService.sendConfirmationEmail(orderData.userId);
+  }
+}
 ```
 
-### 10.2 Database Indexing
+## 8. Deployment Architecture
 
-```sql
--- Performance indexes for cart operations
-CREATE INDEX CONCURRENTLY idx_cart_items_cart_product 
-ON cart_items(cart_id, product_id) 
-WHERE is_active = true;
+### 8.1 Kubernetes Deployment
 
-CREATE INDEX CONCURRENTLY idx_carts_user_updated 
-ON carts(user_id, updated_at DESC);
+#### 8.1.1 Deployment Configuration
 
--- Partial index for active cart items
-CREATE INDEX CONCURRENTLY idx_cart_items_active 
-ON cart_items(cart_id) 
-WHERE is_active = true;
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: ecommerce
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: ecommerce/api-gateway:1.0.0
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: host
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-service
+  namespace: ecommerce
+spec:
+  selector:
+    app: api-gateway
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000
+  type: LoadBalancer
 ```
 
-## 11. Deployment Considerations
+#### 8.1.2 Horizontal Pod Autoscaler
 
-### 11.1 Environment Configuration
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: ecommerce
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+```
+
+### 8.2 Monitoring and Logging
+
+#### 8.2.1 Prometheus Metrics
 
 ```javascript
-// config/config.js
-module.exports = {
-  development: {
-    database: {
-      host: process.env.DB_HOST || 'localhost',
-      port: process.env.DB_PORT || 5432,
-      name: process.env.DB_NAME || 'ecommerce_dev',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'password',
-    },
-    redis: {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: process.env.REDIS_PORT || 6379,
-    },
-    jwt: {
-      secret: process.env.JWT_SECRET || 'dev-secret-key',
-      expiresIn: '24h',
-    },
-  },
-  production: {
-    database: {
-      host: process.env.DB_HOST,
-      port: process.env.DB_PORT,
-      name: process.env.DB_NAME,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      ssl: true,
-    },
-    redis: {
-      host: process.env.REDIS_HOST,
-      port: process.env.REDIS_PORT,
-      password: process.env.REDIS_PASSWORD,
-    },
-    jwt: {
-      secret: process.env.JWT_SECRET,
-      expiresIn: '1h',
-    },
-  },
+const prometheus = require('prom-client');
+
+class MetricsService {
+  constructor() {
+    // Create a Registry
+    this.register = new prometheus.Registry();
+    
+    // Add default metrics
+    prometheus.collectDefaultMetrics({ register: this.register });
+    
+    // Custom metrics
+    this.httpRequestDuration = new prometheus.Histogram({
+      name: 'http_request_duration_seconds',
+      help: 'Duration of HTTP requests in seconds',
+      labelNames: ['method', 'route', 'status_code'],
+      buckets: [0.1, 0.5, 1, 2, 5]
+    });
+    
+    this.httpRequestTotal = new prometheus.Counter({
+      name: 'http_requests_total',
+      help: 'Total number of HTTP requests',
+      labelNames: ['method', 'route', 'status_code']
+    });
+    
+    this.activeConnections = new prometheus.Gauge({
+      name: 'active_connections',
+      help: 'Number of active connections'
+    });
+    
+    this.orderProcessingDuration = new prometheus.Histogram({
+      name: 'order_processing_duration_seconds',
+      help: 'Duration of order processing',
+      buckets: [1, 5, 10, 30, 60]
+    });
+    
+    // Register metrics
+    this.register.registerMetric(this.httpRequestDuration);
+    this.register.registerMetric(this.httpRequestTotal);
+    this.register.registerMetric(this.activeConnections);
+    this.register.registerMetric(this.orderProcessingDuration);
+  }
+
+  getMetrics() {
+    return this.register.metrics();
+  }
+}
+
+// Middleware
+const metricsMiddleware = (metricsService) => {
+  return (req, res, next) => {
+    const start = Date.now();
+    
+    res.on('finish', () => {
+      const duration = (Date.now() - start) / 1000;
+      
+      metricsService.httpRequestDuration
+        .labels(req.method, req.route?.path || req.path, res.statusCode)
+        .observe(duration);
+      
+      metricsService.httpRequestTotal
+        .labels(req.method, req.route?.path || req.path, res.statusCode)
+        .inc();
+    });
+    
+    next();
+  };
 };
 ```
 
-### 11.2 Docker Configuration
-
-```dockerfile
-# Dockerfile
-FROM node:16-alpine
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-
-EXPOSE 3000
-
-CMD ["node", "server.js"]
-```
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-    depends_on:
-      - postgres
-      - redis
-
-  postgres:
-    image: postgres:14-alpine
-    environment:
-      - POSTGRES_DB=ecommerce
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis_data:/data
-
-volumes:
-  postgres_data:
-  redis_data:
-```
-
-## 12. Monitoring and Logging
-
-### 12.1 Logging Configuration
+#### 8.2.2 Structured Logging
 
 ```javascript
-// utils/logger.js
 const winston = require('winston');
 
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
-  ],
-});
+class LoggerService {
+  constructor() {
+    this.logger = winston.createLogger({
+      level: process.env.LOG_LEVEL || 'info',
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+      ),
+      defaultMeta: {
+        service: 'ecommerce-api',
+        environment: process.env.NODE_ENV
+      },
+      transports: [
+        new winston.transports.Console({
+          format: winston.format.combine(
+            winston.format.colorize(),
+            winston.format.simple()
+          )
+        }),
+        new winston.transports.File({
+          filename: 'logs/error.log',
+          level: 'error'
+        }),
+        new winston.transports.File({
+          filename: 'logs/combined.log'
+        })
+      ]
+    });
+  }
 
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple(),
-  }));
+  info(message, meta = {}) {
+    this.logger.info(message, meta);
+  }
+
+  error(message, error, meta = {}) {
+    this.logger.error(message, {
+      ...meta,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      }
+    });
+  }
+
+  warn(message, meta = {}) {
+    this.logger.warn(message, meta);
+  }
+
+  debug(message, meta = {}) {
+    this.logger.debug(message, meta);
+  }
 }
 
-module.exports = logger;
+// Usage
+const logger = new LoggerService();
+
+class OrderService {
+  async createOrder(orderData) {
+    logger.info('Creating new order', {
+      userId: orderData.userId,
+      itemCount: orderData.items.length
+    });
+    
+    try {
+      const order = await this.orderRepository.create(orderData);
+      
+      logger.info('Order created successfully', {
+        orderId: order.id,
+        orderNumber: order.orderNumber
+      });
+      
+      return order;
+    } catch (error) {
+      logger.error('Failed to create order', error, {
+        userId: orderData.userId
+      });
+      throw error;
+    }
+  }
+}
 ```
 
-## 13. Conclusion
+### 8.3 CI/CD Pipeline
 
-This Low Level Design document provides a comprehensive blueprint for implementing the Shopping Cart functionality of the E-Commerce Platform. It covers all aspects from component architecture to deployment considerations, ensuring a robust, scalable, and maintainable solution.
+#### 8.3.1 GitHub Actions Workflow
 
-### 13.1 Key Features Implemented
-- Complete shopping cart management (add, update, remove, clear)
-- Real-time cart total calculations with automatic recalculation
-- Stock validation and max order quantity enforcement
-- User-friendly error handling and validation
-- Secure authentication and authorization
-- Performance optimization through caching and indexing
-- Comprehensive testing strategy
-- Empty cart view with redirection link to continue shopping
+```yaml
+name: CI/CD Pipeline
 
-### 13.2 Next Steps
-1. Implement the components as per this design
-2. Set up the database schema and indexes
-3. Configure the development and production environments
-4. Write and execute unit and integration tests
-5. Deploy to staging environment for QA testing
-6. Monitor performance and optimize as needed
-7. Deploy to production with proper monitoring
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
----
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linter
+      run: npm run lint
+    
+    - name: Run tests
+      run: npm test
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+        REDIS_URL: redis://localhost:6379
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
 
-**Document Version**: 1.0  
-**Last Updated**: 2024-01-15  
-**Status**: Ready for Implementation
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:latest
+          ghcr.io/${{ github.repository }}:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG }}
+    
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl set image deployment/api-gateway \
+          api-gateway=ghcr.io/${{ github.repository }}:${{ github.sha }} \
+          -n ecommerce
+        kubectl rollout status deployment/api-gateway -n ecommerce
+```
+
+## Conclusion
+
+This Low Level Design document provides comprehensive technical specifications for implementing the E-Commerce Platform with complete Shopping Cart functionality. It covers all critical aspects including:
+
+- Detailed component architecture and interactions
+- Complete data models and database schemas
+- API specifications with request/response formats
+- **Shopping Cart Service with automatic recalculation of totals**
+- **Shopping Cart Controller with max_order_quantity validation**
+- **Shopping Cart Component with empty cart redirection link**
+- **Cart Item Component with quantity validation and alerts**
+- Security implementation with authentication and authorization
+- Performance optimization strategies
+- Deployment and monitoring configurations
+
+The design follows industry best practices and is scalable, maintainable, and secure.
+
+**Status**: Complete and Ready for Review with Shopping Cart Enhancements
