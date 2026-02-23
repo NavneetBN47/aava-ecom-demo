@@ -2,9 +2,9 @@
 # E-commerce Product Management System
 
 ## Document Information
-- **Version**: 2.0
+- **Version**: 2.1
 - **Last Updated**: 2024
-- **Status**: Updated with Shopping Cart Management
+- **Status**: Updated with Shopping Cart Management and Enhanced Validations
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -325,11 +325,31 @@ class CartController {
             const { itemId } = req.params;
             const { quantity } = req.body;
             
-            const cart = await cartService.updateCartItemQuantity(userId, itemId, quantity);
+            // Enhanced validation for max_order_quantity on update
+            const cart = await cartService.getCartByUserId(userId);
+            const item = cart.items.find(i => i.id === itemId);
+            
+            if (!item) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Cart item not found'
+                });
+            }
+            
+            // Validate against max_order_quantity before update
+            if (quantity > item.product.max_order_quantity) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Maximum order quantity for this product is ${item.product.max_order_quantity}`,
+                    max_order_quantity: item.product.max_order_quantity
+                });
+            }
+            
+            const updatedCart = await cartService.updateCartItemQuantity(userId, itemId, quantity);
             
             res.json({
                 success: true,
-                data: cart,
+                data: updatedCart,
                 message: 'Cart item updated successfully'
             });
         } catch (error) {
@@ -690,6 +710,8 @@ class CartService {
         }
         
         await cacheService.delete(`cart:${userId}`);
+        
+        // Trigger automatic recalculation
         return await this.getCartByUserId(userId);
     }
     
@@ -721,6 +743,7 @@ class CartService {
         await cartRepository.updateItemQuantity(cart.id, itemId, quantity);
         await cacheService.delete(`cart:${userId}`);
         
+        // Trigger automatic recalculation
         return await this.getCartByUserId(userId);
     }
     
@@ -734,6 +757,7 @@ class CartService {
         await cartRepository.removeItem(cart.id, itemId);
         await cacheService.delete(`cart:${userId}`);
         
+        // Trigger automatic recalculation
         return await this.getCartByUserId(userId);
     }
     
@@ -746,10 +770,19 @@ class CartService {
         }
     }
     
+    /**
+     * Enriches cart with product details and performs automatic recalculation
+     * of subtotals and total whenever called.
+     * This ensures business rule: "Automatic recalculation of subtotal and total upon any quantity mutation"
+     */
     async enrichCartWithProductDetails(cart) {
         const itemsWithDetails = await Promise.all(
             cart.items.map(async (item) => {
                 const product = await productService.getProductById(item.product_id);
+                
+                // Calculate subtotal for each item
+                const subtotal = this.calculateSubtotal(item.quantity, item.price);
+                
                 return {
                     ...item,
                     product: {
@@ -760,22 +793,61 @@ class CartService {
                         stock_quantity: product.stock_quantity,
                         max_order_quantity: product.max_order_quantity
                     },
-                    subtotal: item.quantity * item.price
+                    subtotal: subtotal
                 };
             })
         );
         
-        const total = itemsWithDetails.reduce((sum, item) => sum + item.subtotal, 0);
+        // Calculate total from all subtotals
+        const total = this.calculateTotal(itemsWithDetails);
         
         return {
             ...cart,
             items: itemsWithDetails,
-            total
+            total: total
         };
+    }
+    
+    /**
+     * Calculate subtotal for a cart item
+     * Business Logic: subtotal = quantity * price
+     */
+    calculateSubtotal(quantity, price) {
+        return quantity * price;
+    }
+    
+    /**
+     * Calculate total from all cart items
+     * Business Logic: total = sum of all subtotals
+     */
+    calculateTotal(items) {
+        return items.reduce((sum, item) => sum + item.subtotal, 0);
     }
 }
 
 module.exports = new CartService();
+```
+
+#### 3.2.3 Cart Recalculation Flow Diagram
+
+```mermaid
+flowchart TD
+    A[Cart Mutation Event] --> B{Mutation Type}
+    B -->|Add Item| C[Add Item to Cart]
+    B -->|Update Quantity| D[Update Item Quantity]
+    B -->|Remove Item| E[Remove Item from Cart]
+    
+    C --> F[Invalidate Cache]
+    D --> F
+    E --> F
+    
+    F --> G[Fetch Cart from DB]
+    G --> H[Enrich with Product Details]
+    H --> I[Calculate Subtotal for Each Item]
+    I --> J[Calculate Total from All Subtotals]
+    J --> K[Return Updated Cart with Recalculated Values]
+    K --> L[Cache Updated Cart]
+    L --> M[Return to Client]
 ```
 
 ### 3.3 Repository Layer
@@ -1036,20 +1108,40 @@ export default ProductList;
 // components/ShoppingCart.jsx
 import React from 'react';
 import { useCart } from '../hooks/useCart';
+import { useNavigate } from 'react-router-dom';
 import CartItem from './CartItem';
 import './ShoppingCart.css';
 
 const ShoppingCart = () => {
     const { cart, loading, error, updateQuantity, removeItem, clearCart } = useCart();
+    const navigate = useNavigate();
     
     if (loading) return <div className="loading">Loading cart...</div>;
     if (error) return <div className="error">Error: {error.message}</div>;
     
+    /**
+     * Enhanced Empty Cart View with Redirection Link
+     * Requirement: story_summary.json - presentation_layer_needs
+     * "Empty Cart View with Redirection Link"
+     */
     if (!cart || cart.items.length === 0) {
         return (
             <div className="empty-cart">
+                <div className="empty-cart-icon">
+                    <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="9" cy="21" r="1"></circle>
+                        <circle cx="20" cy="21" r="1"></circle>
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                    </svg>
+                </div>
                 <h2>Your cart is empty</h2>
                 <p>Add some products to get started!</p>
+                <button 
+                    className="continue-shopping-btn"
+                    onClick={() => navigate('/products')}
+                >
+                    Continue Shopping
+                </button>
             </div>
         );
     }
@@ -1103,10 +1195,31 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
     const [quantity, setQuantity] = useState(item.quantity);
     const [updating, setUpdating] = useState(false);
     
+    /**
+     * Enhanced quantity change handler with max_order_quantity validation
+     * Requirement: story_summary.json - business_logic_rules
+     * "Enforcement of max_order_quantity for all cart operations"
+     */
     const handleQuantityChange = async (newQuantity) => {
-        if (newQuantity < 1) return;
+        if (newQuantity < 1) {
+            alert('Quantity must be at least 1');
+            return;
+        }
+        
+        // Validate against max_order_quantity before making API call
         if (newQuantity > item.product.max_order_quantity) {
-            alert(`Maximum order quantity is ${item.product.max_order_quantity}`);
+            alert(
+                `Maximum order quantity for ${item.product.name} is ${item.product.max_order_quantity}. ` +
+                `Please adjust your quantity.`
+            );
+            return;
+        }
+        
+        // Validate against available stock
+        if (newQuantity > item.product.stock_quantity) {
+            alert(
+                `Only ${item.product.stock_quantity} units of ${item.product.name} are available in stock.`
+            );
             return;
         }
         
@@ -1115,9 +1228,19 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
             await onUpdateQuantity(item.id, newQuantity);
             setQuantity(newQuantity);
         } catch (error) {
-            alert(error.message);
+            // Display server-side validation error
+            alert(error.message || 'Failed to update quantity');
+            // Reset to previous quantity
+            setQuantity(item.quantity);
         } finally {
             setUpdating(false);
+        }
+    };
+    
+    const handleInputChange = (e) => {
+        const value = parseInt(e.target.value);
+        if (!isNaN(value)) {
+            handleQuantityChange(value);
         }
     };
     
@@ -1140,26 +1263,36 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
                         : 'Out of Stock'
                     }
                 </p>
+                <p className="max-order-info">
+                    Max order quantity: {item.product.max_order_quantity}
+                </p>
             </div>
             
             <div className="item-quantity">
                 <button 
                     onClick={() => handleQuantityChange(quantity - 1)}
                     disabled={updating || quantity <= 1}
+                    aria-label="Decrease quantity"
                 >
                     -
                 </button>
                 <input 
                     type="number" 
                     value={quantity}
-                    onChange={(e) => handleQuantityChange(parseInt(e.target.value))}
+                    onChange={handleInputChange}
                     disabled={updating}
                     min="1"
-                    max={item.product.max_order_quantity}
+                    max={Math.min(item.product.max_order_quantity, item.product.stock_quantity)}
+                    aria-label="Item quantity"
                 />
                 <button 
                     onClick={() => handleQuantityChange(quantity + 1)}
-                    disabled={updating || quantity >= item.product.max_order_quantity}
+                    disabled={
+                        updating || 
+                        quantity >= item.product.max_order_quantity ||
+                        quantity >= item.product.stock_quantity
+                    }
+                    aria-label="Increase quantity"
                 >
                     +
                 </button>
@@ -1174,6 +1307,7 @@ const CartItem = ({ item, onUpdateQuantity, onRemove }) => {
                 className="remove-btn"
                 onClick={handleRemove}
                 disabled={updating}
+                aria-label="Remove item from cart"
             >
                 Remove
             </button>
@@ -2157,6 +2291,25 @@ describe('CartService', () => {
             expect(item).toBeUndefined();
         });
     });
+    
+    describe('enrichCartWithProductDetails', () => {
+        it('should recalculate subtotals and total', async () => {
+            const mockCart = {
+                id: 'cart-id',
+                user_id: 'user-id',
+                items: [
+                    { product_id: 'p1', quantity: 2, price: 10.00 },
+                    { product_id: 'p2', quantity: 3, price: 15.00 }
+                ]
+            };
+            
+            const enrichedCart = await cartService.enrichCartWithProductDetails(mockCart);
+            
+            expect(enrichedCart.items[0].subtotal).toBe(20.00);
+            expect(enrichedCart.items[1].subtotal).toBe(45.00);
+            expect(enrichedCart.total).toBe(65.00);
+        });
+    });
 });
 ```
 
@@ -2459,5 +2612,8 @@ This Low Level Design document provides comprehensive technical specifications f
 - **Reliability**: Error handling, validation, and comprehensive testing
 - **Stock Management**: Enhanced product entity with stock_quantity and max_order_quantity fields
 - **Cart Management**: Complete shopping cart functionality with validation and business logic
+- **Automatic Recalculation**: Subtotal and total recalculation on every cart mutation
+- **Enhanced Validations**: Max order quantity enforcement on all cart operations
+- **User Experience**: Empty cart view with redirection link to continue shopping
 
 All components are designed to work together seamlessly while maintaining loose coupling and high cohesion.
