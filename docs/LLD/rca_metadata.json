@@ -1,11 +1,1 @@
-{
-  "add": {
-    "SCRUM-1140": {
-      "requirement": "cart management",
-      "components": ["cart service", "inventory service"],
-      "priority": "high"
-    }
-  },
-  "modify": {},
-  "delete": {}
-}
+{"add": [...], "modify": [...], "delete": null}
