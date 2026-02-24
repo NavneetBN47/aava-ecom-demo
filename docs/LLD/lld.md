@@ -108,15 +108,15 @@ The system follows a microservices architecture pattern with the following key c
 - **Search Engine**: Elasticsearch 8.x
 
 ### 3.3 Infrastructure
-- **Container Platform**: Docker
-- **Orchestration**: Kubernetes
+- **Container Runtime**: Docker 24.x
+- **Orchestration**: Kubernetes 1.28.x
 - **Cloud Provider**: AWS
-- **CI/CD**: Jenkins/GitHub Actions
+- **CI/CD**: GitHub Actions
 
 ### 3.4 Monitoring and Logging
 - **Monitoring**: Prometheus + Grafana
 - **Logging**: ELK Stack (Elasticsearch, Logstash, Kibana)
-- **APM**: New Relic
+- **Tracing**: Jaeger
 
 ---
 
@@ -132,32 +132,24 @@ The system follows a microservices architecture pattern with the following key c
 
 #### 4.1.2 Class Diagram
 ```typescript
-class UserController {
-  - userService: UserService
-  + register(req, res): Promise<Response>
-  + login(req, res): Promise<Response>
-  + getProfile(req, res): Promise<Response>
-  + updateProfile(req, res): Promise<Response>
-  + resetPassword(req, res): Promise<Response>
-}
-
 class UserService {
-  - userRepository: UserRepository
-  - authService: AuthService
-  + createUser(userData): Promise<User>
-  + authenticateUser(credentials): Promise<AuthToken>
-  + getUserById(userId): Promise<User>
-  + updateUser(userId, userData): Promise<User>
-  + initiatePasswordReset(email): Promise<void>
+  private userRepository: UserRepository;
+  private authService: AuthService;
+  private emailService: EmailService;
+  
+  async registerUser(userData: UserRegistrationDTO): Promise<User>;
+  async authenticateUser(credentials: LoginDTO): Promise<AuthToken>;
+  async getUserProfile(userId: string): Promise<UserProfile>;
+  async updateProfile(userId: string, updates: ProfileUpdateDTO): Promise<User>;
+  async resetPassword(email: string): Promise<void>;
 }
 
 class UserRepository {
-  - db: DatabaseConnection
-  + save(user): Promise<User>
-  + findById(id): Promise<User>
-  + findByEmail(email): Promise<User>
-  + update(id, data): Promise<User>
-  + delete(id): Promise<void>
+  async create(user: User): Promise<User>;
+  async findById(id: string): Promise<User | null>;
+  async findByEmail(email: string): Promise<User | null>;
+  async update(id: string, updates: Partial<User>): Promise<User>;
+  async delete(id: string): Promise<void>;
 }
 ```
 
@@ -171,33 +163,22 @@ class UserRepository {
 
 #### 4.2.2 Class Diagram
 ```typescript
-class ProductController {
-  - productService: ProductService
-  + createProduct(req, res): Promise<Response>
-  + getProduct(req, res): Promise<Response>
-  + updateProduct(req, res): Promise<Response>
-  + deleteProduct(req, res): Promise<Response>
-  + searchProducts(req, res): Promise<Response>
-}
-
 class ProductService {
-  - productRepository: ProductRepository
-  - inventoryService: InventoryService
-  - searchService: SearchService
-  + addProduct(productData): Promise<Product>
-  + getProductById(productId): Promise<Product>
-  + updateProduct(productId, data): Promise<Product>
-  + removeProduct(productId): Promise<void>
-  + searchProducts(criteria): Promise<Product[]>
+  private productRepository: ProductRepository;
+  private inventoryService: InventoryService;
+  private searchService: SearchService;
+  
+  async createProduct(productData: ProductDTO): Promise<Product>;
+  async getProduct(productId: string): Promise<Product>;
+  async searchProducts(criteria: SearchCriteria): Promise<Product[]>;
+  async updateInventory(productId: string, quantity: number): Promise<void>;
 }
 
 class ProductRepository {
-  - db: DatabaseConnection
-  + save(product): Promise<Product>
-  + findById(id): Promise<Product>
-  + findByCriteria(criteria): Promise<Product[]>
-  + update(id, data): Promise<Product>
-  + delete(id): Promise<void>
+  async create(product: Product): Promise<Product>;
+  async findById(id: string): Promise<Product | null>;
+  async search(criteria: SearchCriteria): Promise<Product[]>;
+  async update(id: string, updates: Partial<Product>): Promise<Product>;
 }
 ```
 
@@ -207,36 +188,21 @@ class ProductRepository {
 - Shopping cart management
 - Cart item operations
 - Cart persistence
-- Cart validation
+- Price calculations
 
 #### 4.3.2 Class Diagram
 ```typescript
-class CartController {
-  - cartService: CartService
-  + getCart(req, res): Promise<Response>
-  + addItem(req, res): Promise<Response>
-  + updateItem(req, res): Promise<Response>
-  + removeItem(req, res): Promise<Response>
-  + clearCart(req, res): Promise<Response>
-}
-
 class CartService {
-  - cartRepository: CartRepository
-  - productService: ProductService
-  + getCartByUserId(userId): Promise<Cart>
-  + addItemToCart(userId, item): Promise<Cart>
-  + updateCartItem(userId, itemId, quantity): Promise<Cart>
-  + removeItemFromCart(userId, itemId): Promise<Cart>
-  + clearUserCart(userId): Promise<void>
-}
-
-class CartRepository {
-  - cache: RedisConnection
-  - db: DatabaseConnection
-  + findByUserId(userId): Promise<Cart>
-  + save(cart): Promise<Cart>
-  + update(userId, cart): Promise<Cart>
-  + delete(userId): Promise<void>
+  private cartRepository: CartRepository;
+  private productService: ProductService;
+  private pricingService: PricingService;
+  
+  async getCart(userId: string): Promise<Cart>;
+  async addItem(userId: string, item: CartItemDTO): Promise<Cart>;
+  async updateItem(userId: string, itemId: string, quantity: number): Promise<Cart>;
+  async removeItem(userId: string, itemId: string): Promise<Cart>;
+  async clearCart(userId: string): Promise<void>;
+  async calculateTotal(userId: string): Promise<CartTotal>;
 }
 ```
 
@@ -245,38 +211,22 @@ class CartRepository {
 #### 4.4.1 Responsibilities
 - Order creation and processing
 - Order status management
-- Order history
 - Payment integration
+- Order history
 
 #### 4.4.2 Class Diagram
 ```typescript
-class OrderController {
-  - orderService: OrderService
-  + createOrder(req, res): Promise<Response>
-  + getOrder(req, res): Promise<Response>
-  + updateOrderStatus(req, res): Promise<Response>
-  + getUserOrders(req, res): Promise<Response>
-  + cancelOrder(req, res): Promise<Response>
-}
-
 class OrderService {
-  - orderRepository: OrderRepository
-  - paymentService: PaymentService
-  - inventoryService: InventoryService
-  + placeOrder(orderData): Promise<Order>
-  + getOrderById(orderId): Promise<Order>
-  + updateStatus(orderId, status): Promise<Order>
-  + getOrdersByUserId(userId): Promise<Order[]>
-  + cancelOrder(orderId): Promise<Order>
-}
-
-class OrderRepository {
-  - db: DatabaseConnection
-  + save(order): Promise<Order>
-  + findById(id): Promise<Order>
-  + findByUserId(userId): Promise<Order[]>
-  + update(id, data): Promise<Order>
-  + delete(id): Promise<void>
+  private orderRepository: OrderRepository;
+  private paymentService: PaymentService;
+  private inventoryService: InventoryService;
+  private notificationService: NotificationService;
+  
+  async createOrder(userId: string, orderData: OrderDTO): Promise<Order>;
+  async getOrder(orderId: string): Promise<Order>;
+  async getUserOrders(userId: string): Promise<Order[]>;
+  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order>;
+  async cancelOrder(orderId: string): Promise<void>;
 }
 ```
 
@@ -286,10 +236,10 @@ class OrderRepository {
 
 ### 5.1 User Management APIs
 
-#### 5.1.1 User Registration
-**Endpoint:** `POST /api/v1/users/register`
+#### 5.1.1 Register User
+**Endpoint**: `POST /api/v1/users/register`
 
-**Request Body:**
+**Request Body**:
 ```json
 {
   "email": "user@example.com",
@@ -300,7 +250,7 @@ class OrderRepository {
 }
 ```
 
-**Response (201 Created):**
+**Response** (201 Created):
 ```json
 {
   "success": true,
@@ -315,15 +265,15 @@ class OrderRepository {
 }
 ```
 
-**Error Responses:**
-- `400 Bad Request`: Invalid input data
-- `409 Conflict`: Email already exists
-- `500 Internal Server Error`: Server error
+**Error Responses**:
+- 400 Bad Request: Invalid input data
+- 409 Conflict: Email already exists
+- 500 Internal Server Error: Server error
 
-#### 5.1.2 User Login
-**Endpoint:** `POST /api/v1/users/login`
+#### 5.1.2 Login User
+**Endpoint**: `POST /api/v1/users/login`
 
-**Request Body:**
+**Request Body**:
 ```json
 {
   "email": "user@example.com",
@@ -331,7 +281,7 @@ class OrderRepository {
 }
 ```
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
@@ -345,20 +295,19 @@ class OrderRepository {
       "firstName": "John",
       "lastName": "Doe"
     }
-  },
-  "message": "Login successful"
+  }
 }
 ```
 
 #### 5.1.3 Get User Profile
-**Endpoint:** `GET /api/v1/users/profile`
+**Endpoint**: `GET /api/v1/users/profile`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
@@ -368,72 +317,29 @@ Authorization: Bearer {accessToken}
     "firstName": "John",
     "lastName": "Doe",
     "phoneNumber": "+1234567890",
-    "address": {
-      "street": "123 Main St",
-      "city": "New York",
-      "state": "NY",
-      "zipCode": "10001",
-      "country": "USA"
-    },
+    "addresses": [
+      {
+        "addressId": "addr_001",
+        "street": "123 Main St",
+        "city": "New York",
+        "state": "NY",
+        "zipCode": "10001",
+        "country": "USA",
+        "isDefault": true
+      }
+    ],
     "createdAt": "2024-01-15T10:30:00Z",
     "updatedAt": "2024-01-15T10:30:00Z"
   }
 }
 ```
 
-#### 5.1.4 Update User Profile
-**Endpoint:** `PUT /api/v1/users/profile`
-
-**Headers:**
-```
-Authorization: Bearer {accessToken}
-```
-
-**Request Body:**
-```json
-{
-  "firstName": "John",
-  "lastName": "Smith",
-  "phoneNumber": "+1234567890",
-  "address": {
-    "street": "456 Oak Ave",
-    "city": "Los Angeles",
-    "state": "CA",
-    "zipCode": "90001",
-    "country": "USA"
-  }
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "userId": "usr_1234567890",
-    "email": "user@example.com",
-    "firstName": "John",
-    "lastName": "Smith",
-    "phoneNumber": "+1234567890",
-    "address": {
-      "street": "456 Oak Ave",
-      "city": "Los Angeles",
-      "state": "CA",
-      "zipCode": "90001",
-      "country": "USA"
-    },
-    "updatedAt": "2024-01-15T11:45:00Z"
-  },
-  "message": "Profile updated successfully"
-}
-```
-
 ### 5.2 Product Catalog APIs
 
 #### 5.2.1 Get All Products
-**Endpoint:** `GET /api/v1/products`
+**Endpoint**: `GET /api/v1/products`
 
-**Query Parameters:**
+**Query Parameters**:
 - `page` (optional): Page number (default: 1)
 - `limit` (optional): Items per page (default: 20)
 - `category` (optional): Filter by category
@@ -442,25 +348,25 @@ Authorization: Bearer {accessToken}
 - `sortBy` (optional): Sort field (price, name, createdAt)
 - `sortOrder` (optional): asc or desc
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
   "data": {
     "products": [
       {
-        "productId": "prd_1234567890",
+        "productId": "prod_001",
         "name": "Wireless Headphones",
-        "description": "High-quality wireless headphones with noise cancellation",
-        "price": 199.99,
+        "description": "High-quality wireless headphones",
+        "price": 99.99,
         "currency": "USD",
         "category": "Electronics",
-        "brand": "TechBrand",
-        "imageUrl": "https://cdn.example.com/products/headphones.jpg",
-        "inStock": true,
-        "stockQuantity": 150,
+        "inventory": 50,
+        "images": [
+          "https://cdn.example.com/products/prod_001_1.jpg"
+        ],
         "rating": 4.5,
-        "reviewCount": 230
+        "reviewCount": 128
       }
     ],
     "pagination": {
@@ -473,67 +379,38 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-#### 5.2.2 Get Product by ID
-**Endpoint:** `GET /api/v1/products/{productId}`
+#### 5.2.2 Get Product Details
+**Endpoint**: `GET /api/v1/products/{productId}`
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
   "data": {
-    "productId": "prd_1234567890",
+    "productId": "prod_001",
     "name": "Wireless Headphones",
-    "description": "High-quality wireless headphones with noise cancellation. Features include 30-hour battery life, premium sound quality, and comfortable design.",
-    "price": 199.99,
+    "description": "High-quality wireless headphones with noise cancellation",
+    "longDescription": "Detailed product description...",
+    "price": 99.99,
     "currency": "USD",
     "category": "Electronics",
     "subcategory": "Audio",
     "brand": "TechBrand",
+    "sku": "WH-001",
+    "inventory": 50,
     "images": [
-      "https://cdn.example.com/products/headphones-1.jpg",
-      "https://cdn.example.com/products/headphones-2.jpg"
+      "https://cdn.example.com/products/prod_001_1.jpg",
+      "https://cdn.example.com/products/prod_001_2.jpg"
     ],
     "specifications": {
       "color": "Black",
       "weight": "250g",
-      "batteryLife": "30 hours",
-      "connectivity": "Bluetooth 5.0"
+      "batteryLife": "30 hours"
     },
-    "inStock": true,
-    "stockQuantity": 150,
     "rating": 4.5,
-    "reviewCount": 230,
+    "reviewCount": 128,
     "createdAt": "2024-01-10T08:00:00Z",
-    "updatedAt": "2024-01-15T09:30:00Z"
-  }
-}
-```
-
-#### 5.2.3 Search Products
-**Endpoint:** `GET /api/v1/products/search`
-
-**Query Parameters:**
-- `q`: Search query (required)
-- `page` (optional): Page number
-- `limit` (optional): Items per page
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "results": [
-      {
-        "productId": "prd_1234567890",
-        "name": "Wireless Headphones",
-        "description": "High-quality wireless headphones...",
-        "price": 199.99,
-        "imageUrl": "https://cdn.example.com/products/headphones.jpg",
-        "relevanceScore": 0.95
-      }
-    ],
-    "totalResults": 45,
-    "searchQuery": "wireless headphones"
+    "updatedAt": "2024-01-15T12:00:00Z"
   }
 }
 ```
@@ -541,168 +418,164 @@ Authorization: Bearer {accessToken}
 ### 5.3 Cart APIs
 
 #### 5.3.1 Get Cart
-**Endpoint:** `GET /api/v1/cart`
+**Endpoint**: `GET /api/v1/cart`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
   "data": {
-    "cartId": "cart_1234567890",
+    "cartId": "cart_usr_1234567890",
     "userId": "usr_1234567890",
     "items": [
       {
-        "itemId": "item_1234567890",
-        "productId": "prd_1234567890",
+        "itemId": "item_001",
+        "productId": "prod_001",
         "name": "Wireless Headphones",
-        "price": 199.99,
+        "price": 99.99,
         "quantity": 2,
-        "imageUrl": "https://cdn.example.com/products/headphones.jpg",
-        "subtotal": 399.98
+        "subtotal": 199.98,
+        "image": "https://cdn.example.com/products/prod_001_1.jpg"
       }
     ],
-    "subtotal": 399.98,
-    "tax": 32.00,
-    "shipping": 10.00,
-    "total": 441.98,
-    "currency": "USD",
-    "itemCount": 2,
-    "updatedAt": "2024-01-15T10:30:00Z"
+    "summary": {
+      "subtotal": 199.98,
+      "tax": 15.99,
+      "shipping": 10.00,
+      "total": 225.97
+    },
+    "updatedAt": "2024-01-15T14:30:00Z"
   }
 }
 ```
 
 #### 5.3.2 Add Item to Cart
-**Endpoint:** `POST /api/v1/cart/items`
+**Endpoint**: `POST /api/v1/cart/items`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Request Body:**
+**Request Body**:
 ```json
 {
-  "productId": "prd_1234567890",
+  "productId": "prod_001",
   "quantity": 2
 }
 ```
 
-**Response (201 Created):**
+**Response** (201 Created):
 ```json
 {
   "success": true,
   "data": {
-    "cartId": "cart_1234567890",
+    "cartId": "cart_usr_1234567890",
     "items": [
       {
-        "itemId": "item_1234567890",
-        "productId": "prd_1234567890",
+        "itemId": "item_001",
+        "productId": "prod_001",
         "name": "Wireless Headphones",
-        "price": 199.99,
+        "price": 99.99,
         "quantity": 2,
-        "subtotal": 399.98
+        "subtotal": 199.98
       }
     ],
-    "total": 441.98,
-    "itemCount": 2
+    "summary": {
+      "subtotal": 199.98,
+      "tax": 15.99,
+      "shipping": 10.00,
+      "total": 225.97
+    }
   },
   "message": "Item added to cart successfully"
 }
 ```
 
 #### 5.3.3 Update Cart Item
-**Endpoint:** `PUT /api/v1/cart/items/{itemId}`
+**Endpoint**: `PUT /api/v1/cart/items/{itemId}`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Request Body:**
+**Request Body**:
 ```json
 {
   "quantity": 3
 }
 ```
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
   "data": {
-    "cartId": "cart_1234567890",
+    "cartId": "cart_usr_1234567890",
     "items": [
       {
-        "itemId": "item_1234567890",
-        "productId": "prd_1234567890",
+        "itemId": "item_001",
+        "productId": "prod_001",
         "name": "Wireless Headphones",
-        "price": 199.99,
+        "price": 99.99,
         "quantity": 3,
-        "subtotal": 599.97
+        "subtotal": 299.97
       }
     ],
-    "total": 651.97,
-    "itemCount": 3
+    "summary": {
+      "subtotal": 299.97,
+      "tax": 23.99,
+      "shipping": 10.00,
+      "total": 333.96
+    }
   },
   "message": "Cart item updated successfully"
 }
 ```
 
 #### 5.3.4 Remove Item from Cart
-**Endpoint:** `DELETE /api/v1/cart/items/{itemId}`
+**Endpoint**: `DELETE /api/v1/cart/items/{itemId}`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
   "data": {
-    "cartId": "cart_1234567890",
+    "cartId": "cart_usr_1234567890",
     "items": [],
-    "total": 0.00,
-    "itemCount": 0
+    "summary": {
+      "subtotal": 0.00,
+      "tax": 0.00,
+      "shipping": 0.00,
+      "total": 0.00
+    }
   },
   "message": "Item removed from cart successfully"
-}
-```
-
-#### 5.3.5 Clear Cart
-**Endpoint:** `DELETE /api/v1/cart`
-
-**Headers:**
-```
-Authorization: Bearer {accessToken}
-```
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "message": "Cart cleared successfully"
 }
 ```
 
 ### 5.4 Order Management APIs
 
 #### 5.4.1 Create Order
-**Endpoint:** `POST /api/v1/orders`
+**Endpoint**: `POST /api/v1/orders`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Request Body:**
+**Request Body**:
 ```json
 {
   "shippingAddress": {
@@ -721,34 +594,34 @@ Authorization: Bearer {accessToken}
   },
   "paymentMethod": {
     "type": "credit_card",
-    "cardToken": "tok_1234567890"
+    "token": "tok_visa_1234"
   }
 }
 ```
 
-**Response (201 Created):**
+**Response** (201 Created):
 ```json
 {
   "success": true,
   "data": {
     "orderId": "ord_1234567890",
     "userId": "usr_1234567890",
-    "orderNumber": "ORD-2024-001234",
     "status": "pending",
     "items": [
       {
-        "productId": "prd_1234567890",
+        "productId": "prod_001",
         "name": "Wireless Headphones",
-        "price": 199.99,
+        "price": 99.99,
         "quantity": 2,
-        "subtotal": 399.98
+        "subtotal": 199.98
       }
     ],
-    "subtotal": 399.98,
-    "tax": 32.00,
-    "shipping": 10.00,
-    "total": 441.98,
-    "currency": "USD",
+    "summary": {
+      "subtotal": 199.98,
+      "tax": 15.99,
+      "shipping": 10.00,
+      "total": 225.97
+    },
     "shippingAddress": {
       "street": "123 Main St",
       "city": "New York",
@@ -756,43 +629,44 @@ Authorization: Bearer {accessToken}
       "zipCode": "10001",
       "country": "USA"
     },
-    "createdAt": "2024-01-15T10:30:00Z",
-    "estimatedDelivery": "2024-01-20T10:30:00Z"
+    "createdAt": "2024-01-15T15:00:00Z",
+    "estimatedDelivery": "2024-01-20T15:00:00Z"
   },
   "message": "Order created successfully"
 }
 ```
 
-#### 5.4.2 Get Order by ID
-**Endpoint:** `GET /api/v1/orders/{orderId}`
+#### 5.4.2 Get Order Details
+**Endpoint**: `GET /api/v1/orders/{orderId}`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
   "data": {
     "orderId": "ord_1234567890",
-    "orderNumber": "ORD-2024-001234",
+    "userId": "usr_1234567890",
     "status": "shipped",
     "items": [
       {
-        "productId": "prd_1234567890",
+        "productId": "prod_001",
         "name": "Wireless Headphones",
-        "price": 199.99,
+        "price": 99.99,
         "quantity": 2,
-        "subtotal": 399.98
+        "subtotal": 199.98
       }
     ],
-    "subtotal": 399.98,
-    "tax": 32.00,
-    "shipping": 10.00,
-    "total": 441.98,
-    "currency": "USD",
+    "summary": {
+      "subtotal": 199.98,
+      "tax": 15.99,
+      "shipping": 10.00,
+      "total": 225.97
+    },
     "shippingAddress": {
       "street": "123 Main St",
       "city": "New York",
@@ -800,41 +674,45 @@ Authorization: Bearer {accessToken}
       "zipCode": "10001",
       "country": "USA"
     },
-    "trackingNumber": "TRK1234567890",
-    "statusHistory": [
+    "tracking": {
+      "carrier": "UPS",
+      "trackingNumber": "1Z999AA10123456784",
+      "url": "https://www.ups.com/track?tracknum=1Z999AA10123456784"
+    },
+    "timeline": [
       {
         "status": "pending",
-        "timestamp": "2024-01-15T10:30:00Z"
+        "timestamp": "2024-01-15T15:00:00Z"
       },
       {
-        "status": "processing",
-        "timestamp": "2024-01-15T11:00:00Z"
+        "status": "confirmed",
+        "timestamp": "2024-01-15T15:30:00Z"
       },
       {
         "status": "shipped",
-        "timestamp": "2024-01-16T09:00:00Z"
+        "timestamp": "2024-01-16T10:00:00Z"
       }
     ],
-    "createdAt": "2024-01-15T10:30:00Z",
-    "updatedAt": "2024-01-16T09:00:00Z"
+    "createdAt": "2024-01-15T15:00:00Z",
+    "estimatedDelivery": "2024-01-20T15:00:00Z"
   }
 }
 ```
 
 #### 5.4.3 Get User Orders
-**Endpoint:** `GET /api/v1/orders`
+**Endpoint**: `GET /api/v1/orders`
 
-**Headers:**
+**Headers**:
 ```
 Authorization: Bearer {accessToken}
 ```
 
-**Query Parameters:**
-- `page` (optional): Page number
-- `limit` (optional): Items per page
+**Query Parameters**:
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 10)
 - `status` (optional): Filter by order status
 
-**Response (200 OK):**
+**Response** (200 OK):
 ```json
 {
   "success": true,
@@ -842,51 +720,20 @@ Authorization: Bearer {accessToken}
     "orders": [
       {
         "orderId": "ord_1234567890",
-        "orderNumber": "ORD-2024-001234",
-        "status": "delivered",
-        "total": 441.98,
-        "currency": "USD",
+        "status": "shipped",
+        "total": 225.97,
         "itemCount": 2,
-        "createdAt": "2024-01-15T10:30:00Z"
+        "createdAt": "2024-01-15T15:00:00Z",
+        "estimatedDelivery": "2024-01-20T15:00:00Z"
       }
     ],
     "pagination": {
       "currentPage": 1,
       "totalPages": 5,
-      "totalItems": 48,
+      "totalItems": 45,
       "itemsPerPage": 10
     }
   }
-}
-```
-
-#### 5.4.4 Cancel Order
-**Endpoint:** `POST /api/v1/orders/{orderId}/cancel`
-
-**Headers:**
-```
-Authorization: Bearer {accessToken}
-```
-
-**Request Body:**
-```json
-{
-  "reason": "Changed mind"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "orderId": "ord_1234567890",
-    "status": "cancelled",
-    "cancelledAt": "2024-01-15T12:00:00Z",
-    "refundStatus": "pending",
-    "refundAmount": 441.98
-  },
-  "message": "Order cancelled successfully"
 }
 ```
 
@@ -905,38 +752,39 @@ Authorization: Bearer {accessToken}
 │ password_hash   │         │ description     │
 │ first_name      │         │ price           │
 │ last_name       │         │ category        │
-│ phone_number    │         │ brand           │
-│ created_at      │         │ stock_quantity  │
-│ updated_at      │         │ image_url       │
+│ phone_number    │         │ inventory       │
+│ created_at      │         │ created_at      │
+│ updated_at      │         │ updated_at      │
 └────────┬────────┘         └────────┬────────┘
          │                           │
+         │ 1                         │
          │                           │
-         │    ┌─────────────────┐   │
-         │    │   Cart_Items    │   │
-         └───▶├─────────────────┤◀──┘
-              │ cart_item_id(PK)│
-              │ user_id (FK)    │
-              │ product_id (FK) │
-              │ quantity        │
-              │ added_at        │
-              └────────┬────────┘
-                       │
-         ┌─────────────┴────────────┐
-         │                          │
-┌────────▼────────┐        ┌───────▼────────┐
-│     Orders      │        │  Order_Items   │
-├─────────────────┤        ├────────────────┤
-│ order_id (PK)   │◀───────│ order_item_id  │
-│ user_id (FK)    │        │ order_id (FK)  │
-│ order_number    │        │ product_id(FK) │
-│ status          │        │ quantity       │
-│ subtotal        │        │ price          │
-│ tax             │        │ subtotal       │
-│ shipping        │        └────────────────┘
-│ total           │
-│ shipping_address│
-│ billing_address │
-│ created_at      │
+         │ N                         │ N
+         │                           │
+┌────────▼────────┐         ┌────────▼────────┐
+│     Carts       │         │   Cart_Items    │
+├─────────────────┤         ├─────────────────┤
+│ cart_id (PK)    │    1    │ item_id (PK)    │
+│ user_id (FK)    ├─────────┤ cart_id (FK)    │
+│ created_at      │    N    │ product_id (FK) │
+│ updated_at      │         │ quantity        │
+└────────┬────────┘         │ price           │
+         │                  │ created_at      │
+         │                  └─────────────────┘
+         │ 1
+         │
+         │ N
+         │
+┌────────▼────────┐         ┌─────────────────┐
+│     Orders      │         │  Order_Items    │
+├─────────────────┤         ├─────────────────┤
+│ order_id (PK)   │    1    │ item_id (PK)    │
+│ user_id (FK)    ├─────────┤ order_id (FK)   │
+│ status          │    N    │ product_id (FK) │
+│ total_amount    │         │ quantity        │
+│ shipping_addr   │         │ price           │
+│ billing_addr    │         │ subtotal        │
+│ created_at      │         └─────────────────┘
 │ updated_at      │
 └─────────────────┘
 ```
@@ -952,16 +800,10 @@ CREATE TABLE users (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     phone_number VARCHAR(20),
-    address_street VARCHAR(255),
-    address_city VARCHAR(100),
-    address_state VARCHAR(100),
-    address_zip_code VARCHAR(20),
-    address_country VARCHAR(100),
     is_active BOOLEAN DEFAULT true,
     email_verified BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    last_login TIMESTAMP,
     INDEX idx_email (email),
     INDEX idx_created_at (created_at)
 );
@@ -973,81 +815,87 @@ CREATE TABLE products (
     product_id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
+    long_description TEXT,
     price DECIMAL(10, 2) NOT NULL,
     currency VARCHAR(3) DEFAULT 'USD',
     category VARCHAR(100) NOT NULL,
     subcategory VARCHAR(100),
     brand VARCHAR(100),
-    image_url VARCHAR(500),
-    stock_quantity INT NOT NULL DEFAULT 0,
-    is_active BOOLEAN DEFAULT true,
+    sku VARCHAR(100) UNIQUE,
+    inventory INT DEFAULT 0,
+    images JSON,
+    specifications JSON,
     rating DECIMAL(3, 2) DEFAULT 0.00,
     review_count INT DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_category (category),
     INDEX idx_price (price),
     INDEX idx_created_at (created_at),
-    FULLTEXT INDEX idx_name_description (name, description)
+    FULLTEXT INDEX idx_search (name, description)
 );
 ```
 
-#### 6.2.3 Cart_Items Table
+#### 6.2.3 Carts Table
 ```sql
-CREATE TABLE cart_items (
-    cart_item_id VARCHAR(50) PRIMARY KEY,
+CREATE TABLE carts (
+    cart_id VARCHAR(50) PRIMARY KEY,
     user_id VARCHAR(50) NOT NULL,
-    product_id VARCHAR(50) NOT NULL,
-    quantity INT NOT NULL DEFAULT 1,
-    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE,
-    UNIQUE KEY unique_user_product (user_id, product_id),
-    INDEX idx_user_id (user_id),
-    INDEX idx_product_id (product_id)
+    INDEX idx_user_id (user_id)
 );
 ```
 
-#### 6.2.4 Orders Table
+#### 6.2.4 Cart Items Table
+```sql
+CREATE TABLE cart_items (
+    item_id VARCHAR(50) PRIMARY KEY,
+    cart_id VARCHAR(50) NOT NULL,
+    product_id VARCHAR(50) NOT NULL,
+    quantity INT NOT NULL DEFAULT 1,
+    price DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (cart_id) REFERENCES carts(cart_id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE,
+    INDEX idx_cart_id (cart_id),
+    INDEX idx_product_id (product_id),
+    UNIQUE KEY unique_cart_product (cart_id, product_id)
+);
+```
+
+#### 6.2.5 Orders Table
 ```sql
 CREATE TABLE orders (
     order_id VARCHAR(50) PRIMARY KEY,
     user_id VARCHAR(50) NOT NULL,
-    order_number VARCHAR(50) UNIQUE NOT NULL,
-    status ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
     subtotal DECIMAL(10, 2) NOT NULL,
     tax DECIMAL(10, 2) NOT NULL,
     shipping DECIMAL(10, 2) NOT NULL,
-    total DECIMAL(10, 2) NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
     currency VARCHAR(3) DEFAULT 'USD',
-    shipping_address_street VARCHAR(255),
-    shipping_address_city VARCHAR(100),
-    shipping_address_state VARCHAR(100),
-    shipping_address_zip_code VARCHAR(20),
-    shipping_address_country VARCHAR(100),
-    billing_address_street VARCHAR(255),
-    billing_address_city VARCHAR(100),
-    billing_address_state VARCHAR(100),
-    billing_address_zip_code VARCHAR(20),
-    billing_address_country VARCHAR(100),
-    tracking_number VARCHAR(100),
-    payment_method VARCHAR(50),
-    payment_status ENUM('pending', 'completed', 'failed', 'refunded') DEFAULT 'pending',
+    shipping_address JSON NOT NULL,
+    billing_address JSON NOT NULL,
+    payment_method JSON NOT NULL,
+    tracking_info JSON,
+    estimated_delivery TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id),
     INDEX idx_user_id (user_id),
-    INDEX idx_order_number (order_number),
     INDEX idx_status (status),
     INDEX idx_created_at (created_at)
 );
 ```
 
-#### 6.2.5 Order_Items Table
+#### 6.2.6 Order Items Table
 ```sql
 CREATE TABLE order_items (
-    order_item_id VARCHAR(50) PRIMARY KEY,
+    item_id VARCHAR(50) PRIMARY KEY,
     order_id VARCHAR(50) NOT NULL,
     product_id VARCHAR(50) NOT NULL,
     product_name VARCHAR(255) NOT NULL,
@@ -1066,17 +914,25 @@ CREATE TABLE order_items (
 
 #### 6.3.1 Primary Indexes
 - All tables have primary key indexes on their ID columns
-- Composite unique indexes on cart_items (user_id, product_id)
+- Foreign key columns are indexed for join optimization
 
 #### 6.3.2 Secondary Indexes
-- Users: email, created_at
-- Products: category, price, created_at
-- Orders: user_id, order_number, status, created_at
-- Cart_Items: user_id, product_id
-- Order_Items: order_id, product_id
+- Email index on users table for login queries
+- Category and price indexes on products for filtering
+- Status index on orders for status-based queries
+- Full-text search index on product name and description
 
-#### 6.3.3 Full-Text Indexes
-- Products: name and description for search functionality
+#### 6.3.3 Composite Indexes
+```sql
+-- For cart item uniqueness
+CREATE UNIQUE INDEX idx_cart_product ON cart_items(cart_id, product_id);
+
+-- For order history queries
+CREATE INDEX idx_user_status_date ON orders(user_id, status, created_at);
+
+-- For product search and filtering
+CREATE INDEX idx_category_price ON products(category, price);
+```
 
 ---
 
@@ -1085,37 +941,49 @@ CREATE TABLE order_items (
 ### 7.1 Authentication
 
 #### 7.1.1 JWT Token Structure
-```json
-{
-  "header": {
-    "alg": "HS256",
-    "typ": "JWT"
-  },
-  "payload": {
-    "userId": "usr_1234567890",
-    "email": "user@example.com",
-    "role": "customer",
-    "iat": 1642248000,
-    "exp": 1642251600
-  }
+```typescript
+interface JWTPayload {
+  userId: string;
+  email: string;
+  role: string;
+  iat: number;  // Issued at
+  exp: number;  // Expiration
 }
 ```
 
-#### 7.1.2 Token Management
-- **Access Token Expiry**: 1 hour
-- **Refresh Token Expiry**: 7 days
-- **Token Storage**: HTTP-only cookies for web, secure storage for mobile
-- **Token Refresh Endpoint**: `POST /api/v1/auth/refresh`
+#### 7.1.2 Token Generation
+```typescript
+function generateAccessToken(user: User): string {
+  const payload: JWTPayload = {
+    userId: user.userId,
+    email: user.email,
+    role: user.role,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hour
+  };
+  
+  return jwt.sign(payload, process.env.JWT_SECRET, {
+    algorithm: 'HS256'
+  });
+}
+
+function generateRefreshToken(user: User): string {
+  const payload = {
+    userId: user.userId,
+    type: 'refresh',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 7) // 7 days
+  };
+  
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+    algorithm: 'HS256'
+  });
+}
+```
 
 ### 7.2 Password Security
 
-#### 7.2.1 Password Requirements
-- Minimum length: 8 characters
-- Must contain: uppercase, lowercase, number, special character
-- Cannot contain common passwords
-- Cannot contain user's email or name
-
-#### 7.2.2 Password Hashing
+#### 7.2.1 Password Hashing
 ```typescript
 import bcrypt from 'bcrypt';
 
@@ -1130,6 +998,13 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
 }
 ```
 
+#### 7.2.2 Password Requirements
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one special character
+
 ### 7.3 API Security
 
 #### 7.3.1 Rate Limiting
@@ -1138,13 +1013,13 @@ import rateLimit from 'express-rate-limit';
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 100, // Limit each IP to 100 requests per windowMs
   message: 'Too many requests from this IP, please try again later.'
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5, // limit each IP to 5 login requests per windowMs
+  max: 5, // Limit each IP to 5 login attempts per windowMs
   message: 'Too many login attempts, please try again later.'
 });
 ```
@@ -1168,26 +1043,26 @@ app.use(cors(corsOptions));
 ```typescript
 import { body, validationResult } from 'express-validator';
 
-const validateUserRegistration = [
+const validateRegistration = [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 8 }).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/),
-  body('firstName').trim().isLength({ min: 2, max: 50 }),
-  body('lastName').trim().isLength({ min: 2, max: 50 }),
+  body('firstName').trim().isLength({ min: 1, max: 100 }),
+  body('lastName').trim().isLength({ min: 1, max: 100 }),
   body('phoneNumber').optional().isMobilePhone('any')
 ];
 ```
 
 ### 7.4 Data Encryption
 
-#### 7.4.1 In-Transit Encryption
-- TLS 1.3 for all API communications
-- HTTPS enforced for all endpoints
-- Certificate pinning for mobile apps
-
-#### 7.4.2 At-Rest Encryption
+#### 7.4.1 Encryption at Rest
 - Database encryption using AES-256
 - Encrypted backups
 - Secure key management using AWS KMS
+
+#### 7.4.2 Encryption in Transit
+- TLS 1.3 for all API communications
+- HTTPS only (HSTS enabled)
+- Certificate pinning for mobile apps
 
 ---
 
@@ -1195,22 +1070,17 @@ const validateUserRegistration = [
 
 ### 8.1 Error Response Format
 
-```json
-{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid input data",
-    "details": [
-      {
-        "field": "email",
-        "message": "Invalid email format"
-      }
-    ],
-    "timestamp": "2024-01-15T10:30:00Z",
-    "path": "/api/v1/users/register",
-    "requestId": "req_1234567890"
-  }
+```typescript
+interface ErrorResponse {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: any;
+    timestamp: string;
+    path: string;
+    requestId: string;
+  };
 }
 ```
 
@@ -1218,31 +1088,38 @@ const validateUserRegistration = [
 
 | Code | HTTP Status | Description |
 |------|-------------|-------------|
-| VALIDATION_ERROR | 400 | Invalid input data |
-| AUTHENTICATION_ERROR | 401 | Authentication failed |
-| AUTHORIZATION_ERROR | 403 | Insufficient permissions |
-| NOT_FOUND | 404 | Resource not found |
-| CONFLICT | 409 | Resource conflict |
-| RATE_LIMIT_EXCEEDED | 429 | Too many requests |
-| INTERNAL_ERROR | 500 | Internal server error |
-| SERVICE_UNAVAILABLE | 503 | Service temporarily unavailable |
+| AUTH_001 | 401 | Invalid credentials |
+| AUTH_002 | 401 | Token expired |
+| AUTH_003 | 401 | Invalid token |
+| AUTH_004 | 403 | Insufficient permissions |
+| VAL_001 | 400 | Invalid input data |
+| VAL_002 | 400 | Missing required field |
+| RES_001 | 404 | Resource not found |
+| RES_002 | 409 | Resource already exists |
+| BUS_001 | 400 | Insufficient inventory |
+| BUS_002 | 400 | Invalid cart operation |
+| BUS_003 | 400 | Payment failed |
+| SYS_001 | 500 | Internal server error |
+| SYS_002 | 503 | Service unavailable |
 
 ### 8.3 Error Handling Middleware
 
 ```typescript
 class AppError extends Error {
   constructor(
-    public statusCode: number,
     public code: string,
+    public statusCode: number,
     public message: string,
-    public details?: any[]
+    public details?: any
   ) {
     super(message);
-    Error.captureStackTrace(this, this.constructor);
+    this.name = 'AppError';
   }
 }
 
-const errorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
+function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
+  const requestId = req.headers['x-request-id'] as string || uuidv4();
+  
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       success: false,
@@ -1252,25 +1129,54 @@ const errorHandler = (err: Error, req: Request, res: Response, next: NextFunctio
         details: err.details,
         timestamp: new Date().toISOString(),
         path: req.path,
-        requestId: req.id
+        requestId
       }
     });
   }
-
+  
   // Log unexpected errors
-  logger.error('Unexpected error:', err);
-
+  logger.error('Unexpected error:', {
+    error: err,
+    stack: err.stack,
+    requestId,
+    path: req.path
+  });
+  
   return res.status(500).json({
     success: false,
     error: {
-      code: 'INTERNAL_ERROR',
+      code: 'SYS_001',
       message: 'An unexpected error occurred',
       timestamp: new Date().toISOString(),
       path: req.path,
-      requestId: req.id
+      requestId
     }
   });
-};
+}
+```
+
+### 8.4 Validation Error Handling
+
+```typescript
+function handleValidationErrors(req: Request, res: Response, next: NextFunction) {
+  const errors = validationResult(req);
+  
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'VAL_001',
+        message: 'Validation failed',
+        details: errors.array(),
+        timestamp: new Date().toISOString(),
+        path: req.path,
+        requestId: req.headers['x-request-id'] || uuidv4()
+      }
+    });
+  }
+  
+  next();
+}
 ```
 
 ---
@@ -1279,7 +1185,7 @@ const errorHandler = (err: Error, req: Request, res: Response, next: NextFunctio
 
 ### 9.1 Caching Strategy
 
-#### 9.1.1 Redis Caching
+#### 9.1.1 Redis Cache Implementation
 ```typescript
 import Redis from 'ioredis';
 
@@ -1287,26 +1193,44 @@ const redis = new Redis({
   host: process.env.REDIS_HOST,
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD,
-  retryStrategy: (times) => Math.min(times * 50, 2000)
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  }
 });
 
-// Cache product data
-async function getCachedProduct(productId: string) {
-  const cached = await redis.get(`product:${productId}`);
-  if (cached) {
-    return JSON.parse(cached);
+class CacheService {
+  async get<T>(key: string): Promise<T | null> {
+    const data = await redis.get(key);
+    return data ? JSON.parse(data) : null;
   }
   
-  const product = await productRepository.findById(productId);
-  await redis.setex(`product:${productId}`, 3600, JSON.stringify(product));
-  return product;
+  async set(key: string, value: any, ttl: number = 3600): Promise<void> {
+    await redis.setex(key, ttl, JSON.stringify(value));
+  }
+  
+  async delete(key: string): Promise<void> {
+    await redis.del(key);
+  }
+  
+  async invalidatePattern(pattern: string): Promise<void> {
+    const keys = await redis.keys(pattern);
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  }
 }
 ```
 
-#### 9.1.2 Cache Invalidation
-- Product updates: Invalidate product cache
-- Cart updates: Invalidate user cart cache
-- Order creation: Invalidate cart and inventory cache
+#### 9.1.2 Cache Keys and TTL
+
+| Resource | Cache Key Pattern | TTL |
+|----------|------------------|-----|
+| Product Details | `product:{productId}` | 1 hour |
+| Product List | `products:page:{page}:limit:{limit}` | 15 minutes |
+| User Profile | `user:{userId}:profile` | 30 minutes |
+| Cart | `cart:{userId}` | 1 hour |
+| Categories | `categories:all` | 24 hours |
 
 ### 9.2 Database Optimization
 
@@ -1320,18 +1244,17 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  max: 20, // maximum number of clients
+  max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000
+  connectionTimeoutMillis: 2000,
 });
 ```
 
 #### 9.2.2 Query Optimization
-- Use prepared statements
+- Use prepared statements to prevent SQL injection and improve performance
 - Implement pagination for large result sets
-- Use appropriate indexes
-- Avoid N+1 queries
-- Use database views for complex queries
+- Use appropriate indexes for frequently queried columns
+- Avoid N+1 query problems using joins or batch loading
 
 ### 9.3 API Response Optimization
 
@@ -1357,9 +1280,62 @@ interface PaginationParams {
   limit: number;
 }
 
-function paginate(query: any, { page = 1, limit = 20 }: PaginationParams) {
-  const offset = (page - 1) * limit;
-  return query.limit(limit).offset(offset);
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    itemsPerPage: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+function paginate<T>(items: T[], total: number, params: PaginationParams): PaginatedResponse<T> {
+  const totalPages = Math.ceil(total / params.limit);
+  
+  return {
+    data: items,
+    pagination: {
+      currentPage: params.page,
+      totalPages,
+      totalItems: total,
+      itemsPerPage: params.limit,
+      hasNextPage: params.page < totalPages,
+      hasPreviousPage: params.page > 1
+    }
+  };
+}
+```
+
+### 9.4 Load Balancing
+
+#### 9.4.1 Nginx Configuration
+```nginx
+upstream api_backend {
+    least_conn;
+    server api1.example.com:3000 weight=3;
+    server api2.example.com:3000 weight=3;
+    server api3.example.com:3000 weight=2;
+    
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+    
+    location / {
+        proxy_pass http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
 }
 ```
 
@@ -1367,77 +1343,15 @@ function paginate(query: any, { page = 1, limit = 20 }: PaginationParams) {
 
 ## 10. Deployment Architecture
 
-### 10.1 Container Configuration
+### 10.1 Kubernetes Deployment
 
-#### 10.1.1 Dockerfile
-```dockerfile
-FROM node:18-alpine AS builder
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-RUN npm run build
-
-FROM node:18-alpine
-
-WORKDIR /app
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY package*.json ./
-
-EXPOSE 3000
-
-CMD ["node", "dist/server.js"]
-```
-
-#### 10.1.2 Docker Compose
-```yaml
-version: '3.8'
-
-services:
-  api:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-    depends_on:
-      - postgres
-      - redis
-
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=ecommerce
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=secret
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis_data:/data
-
-volumes:
-  postgres_data:
-  redis_data:
-```
-
-### 10.2 Kubernetes Deployment
-
-#### 10.2.1 Deployment Configuration
+#### 10.1.1 Deployment Configuration
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ecommerce-api
+  namespace: production
 spec:
   replicas: 3
   selector:
@@ -1450,12 +1364,17 @@ spec:
     spec:
       containers:
       - name: api
-        image: ecommerce-api:latest
+        image: ecommerce-api:1.0.0
         ports:
         - containerPort: 3000
         env:
         - name: NODE_ENV
           value: "production"
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: host
         resources:
           requests:
             memory: "256Mi"
@@ -1477,15 +1396,32 @@ spec:
           periodSeconds: 5
 ```
 
-### 10.3 CI/CD Pipeline
+#### 10.1.2 Service Configuration
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecommerce-api-service
+  namespace: production
+spec:
+  selector:
+    app: ecommerce-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000
+  type: LoadBalancer
+```
 
-#### 10.3.1 GitHub Actions Workflow
+### 10.2 CI/CD Pipeline
+
+#### 10.2.1 GitHub Actions Workflow
 ```yaml
 name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -1493,44 +1429,43 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '18'
-      - name: Install dependencies
-        run: npm ci
-      - name: Run tests
-        run: npm test
-      - name: Run linter
-        run: npm run lint
+    - uses: actions/checkout@v2
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+    - name: Install dependencies
+      run: npm ci
+    - name: Run tests
+      run: npm test
+    - name: Run linter
+      run: npm run lint
 
   build:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Build Docker image
-        run: docker build -t ecommerce-api:${{ github.sha }} .
-      - name: Push to registry
-        run: |
-          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-          docker push ecommerce-api:${{ github.sha }}
+    - uses: actions/checkout@v2
+    - name: Build Docker image
+      run: docker build -t ecommerce-api:${{ github.sha }} .
+    - name: Push to registry
+      run: |
+        echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+        docker push ecommerce-api:${{ github.sha }}
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy to Kubernetes
-        run: |
-          kubectl set image deployment/ecommerce-api api=ecommerce-api:${{ github.sha }}
-          kubectl rollout status deployment/ecommerce-api
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl set image deployment/ecommerce-api api=ecommerce-api:${{ github.sha }} -n production
+        kubectl rollout status deployment/ecommerce-api -n production
 ```
 
-### 10.4 Monitoring and Logging
+### 10.3 Monitoring and Logging
 
-#### 10.4.1 Prometheus Metrics
+#### 10.3.1 Prometheus Metrics
 ```typescript
 import promClient from 'prom-client';
 
@@ -1553,9 +1488,22 @@ const httpRequestTotal = new promClient.Counter({
   labelNames: ['method', 'route', 'status_code'],
   registers: [register]
 });
+
+// Middleware to track metrics
+function metricsMiddleware(req: Request, res: Response, next: NextFunction) {
+  const start = Date.now();
+  
+  res.on('finish', () => {
+    const duration = (Date.now() - start) / 1000;
+    httpRequestDuration.labels(req.method, req.route?.path || req.path, res.statusCode.toString()).observe(duration);
+    httpRequestTotal.labels(req.method, req.route?.path || req.path, res.statusCode.toString()).inc();
+  });
+  
+  next();
+}
 ```
 
-#### 10.4.2 Structured Logging
+#### 10.3.2 Structured Logging
 ```typescript
 import winston from 'winston';
 
@@ -1580,32 +1528,49 @@ if (process.env.NODE_ENV !== 'production') {
 }
 ```
 
+### 10.4 Backup and Disaster Recovery
+
+#### 10.4.1 Database Backup Strategy
+- Automated daily backups at 2 AM UTC
+- Retention policy: 30 days for daily backups, 12 months for monthly backups
+- Backup stored in multiple geographic regions
+- Regular restore testing (monthly)
+
+#### 10.4.2 Disaster Recovery Plan
+1. **RTO (Recovery Time Objective)**: 4 hours
+2. **RPO (Recovery Point Objective)**: 1 hour
+3. **Failover Procedure**:
+   - Automatic failover to standby database
+   - DNS update to point to backup region
+   - Service health verification
+   - Incident notification to stakeholders
+
 ---
 
-## Appendix
+## Appendix A: Glossary
 
-### A. Glossary
-- **Microservices**: Architectural style structuring an application as a collection of loosely coupled services
-- **JWT**: JSON Web Token, a compact URL-safe means of representing claims
-- **Redis**: In-memory data structure store used as a database, cache, and message broker
-- **PostgreSQL**: Open-source relational database management system
+- **API Gateway**: Entry point for all client requests
+- **Microservice**: Independent, deployable service component
+- **JWT**: JSON Web Token for authentication
+- **Redis**: In-memory data structure store used for caching
+- **PostgreSQL**: Relational database management system
 - **Kubernetes**: Container orchestration platform
-
-### B. References
-- REST API Design Best Practices
-- PostgreSQL Documentation
-- Node.js Best Practices
-- Docker Documentation
-- Kubernetes Documentation
-
-### C. Change Log
-| Date | Version | Author | Description |
-|------|---------|--------|-------------|
-| 2024-01-15 | 1.0 | Engineering Team | Initial LLD document |
-| 2024-01-20 | 1.1 | Engineering Team | Updated Cart API specifications |
+- **Load Balancer**: Distributes incoming traffic across multiple servers
 
 ---
 
-**Document Status:** Approved  
-**Last Review Date:** 2024-01-20  
+## Appendix B: References
+
+1. REST API Design Best Practices
+2. PostgreSQL Performance Tuning Guide
+3. Kubernetes Documentation
+4. Node.js Security Best Practices
+5. OAuth 2.0 Specification
+
+---
+
+## Document Control
+
+**Document Owner:** Engineering Team  
+**Last Updated:** 2024-01-20  
 **Next Review Date:** 2024-02-20
