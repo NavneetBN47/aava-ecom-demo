@@ -73,10 +73,103 @@ classDiagram
         +setCreatedAt(LocalDateTime createdAt) void
     }
     
+    class ShoppingCartController {
+        <<@RestController>>
+        -ShoppingCartService shoppingCartService
+        +getCart(Long userId) ResponseEntity~ShoppingCart~
+        +addItemToCart(Long userId, CartItemRequest request) ResponseEntity~ShoppingCart~
+        +updateCartItem(Long userId, Long itemId, Integer quantity) ResponseEntity~ShoppingCart~
+        +removeItemFromCart(Long userId, Long itemId) ResponseEntity~ShoppingCart~
+        +clearCart(Long userId) ResponseEntity~Void~
+    }
+    
+    class ShoppingCartService {
+        <<@Service>>
+        -ShoppingCartRepository shoppingCartRepository
+        -CartItemRepository cartItemRepository
+        -ProductService productService
+        +getCartByUserId(Long userId) ShoppingCart
+        +addItemToCart(Long userId, Long productId, Integer quantity) ShoppingCart
+        +updateCartItemQuantity(Long userId, Long itemId, Integer quantity) ShoppingCart
+        +removeItemFromCart(Long userId, Long itemId) ShoppingCart
+        +clearCart(Long userId) void
+        +recalculateCartTotal(ShoppingCart cart) void
+    }
+    
+    class ShoppingCartRepository {
+        <<@Repository>>
+        <<interface>>
+        +findByUserId(Long userId) Optional~ShoppingCart~
+        +save(ShoppingCart cart) ShoppingCart
+        +deleteByUserId(Long userId) void
+    }
+    
+    class CartItemRepository {
+        <<@Repository>>
+        <<interface>>
+        +findByCartIdAndProductId(Long cartId, Long productId) Optional~CartItem~
+        +deleteById(Long id) void
+        +findByCartId(Long cartId) List~CartItem~
+    }
+    
+    class ShoppingCart {
+        <<@Entity>>
+        -Long id
+        -Long userId
+        -BigDecimal totalAmount
+        -LocalDateTime createdAt
+        -LocalDateTime updatedAt
+        -List~CartItem~ items
+        +getId() Long
+        +setId(Long id) void
+        +getUserId() Long
+        +setUserId(Long userId) void
+        +getTotalAmount() BigDecimal
+        +setTotalAmount(BigDecimal totalAmount) void
+        +getCreatedAt() LocalDateTime
+        +setCreatedAt(LocalDateTime createdAt) void
+        +getUpdatedAt() LocalDateTime
+        +setUpdatedAt(LocalDateTime updatedAt) void
+        +getItems() List~CartItem~
+        +setItems(List~CartItem~ items) void
+    }
+    
+    class CartItem {
+        <<@Entity>>
+        -Long id
+        -Long cartId
+        -Long productId
+        -String productName
+        -BigDecimal productPrice
+        -Integer quantity
+        -BigDecimal subtotal
+        +getId() Long
+        +setId(Long id) void
+        +getCartId() Long
+        +setCartId(Long cartId) void
+        +getProductId() Long
+        +setProductId(Long productId) void
+        +getProductName() String
+        +setProductName(String productName) void
+        +getProductPrice() BigDecimal
+        +setProductPrice(BigDecimal productPrice) void
+        +getQuantity() Integer
+        +setQuantity(Integer quantity) void
+        +getSubtotal() BigDecimal
+        +setSubtotal(BigDecimal subtotal) void
+    }
+    
     ProductController --> ProductService : depends on
     ProductService --> ProductRepository : depends on
     ProductRepository --> Product : manages
     ProductService --> Product : operates on
+    ShoppingCartController --> ShoppingCartService : depends on
+    ShoppingCartService --> ShoppingCartRepository : depends on
+    ShoppingCartService --> CartItemRepository : depends on
+    ShoppingCartService --> ProductService : depends on
+    ShoppingCartRepository --> ShoppingCart : manages
+    CartItemRepository --> CartItem : manages
+    ShoppingCart --> CartItem : contains
 ```
 
 ### 2.2 Entity Relationship Diagram
@@ -92,6 +185,27 @@ erDiagram
         INTEGER stock_quantity "NOT NULL, DEFAULT 0"
         TIMESTAMP created_at "NOT NULL, DEFAULT CURRENT_TIMESTAMP"
     }
+    
+    SHOPPING_CARTS {
+        BIGINT id PK "AUTO_INCREMENT, NOT NULL"
+        BIGINT user_id "NOT NULL, UNIQUE"
+        DECIMAL total_amount "NOT NULL, PRECISION(10,2), DEFAULT 0.00"
+        TIMESTAMP created_at "NOT NULL, DEFAULT CURRENT_TIMESTAMP"
+        TIMESTAMP updated_at "NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+    }
+    
+    CART_ITEMS {
+        BIGINT id PK "AUTO_INCREMENT, NOT NULL"
+        BIGINT cart_id FK "NOT NULL"
+        BIGINT product_id FK "NOT NULL"
+        VARCHAR product_name "NOT NULL, MAX_LENGTH(255)"
+        DECIMAL product_price "NOT NULL, PRECISION(10,2)"
+        INTEGER quantity "NOT NULL, DEFAULT 1"
+        DECIMAL subtotal "NOT NULL, PRECISION(10,2)"
+    }
+    
+    SHOPPING_CARTS ||--o{ CART_ITEMS : contains
+    PRODUCTS ||--o{ CART_ITEMS : referenced_by
 ```
 
 ## 3. Sequence Diagrams
@@ -269,6 +383,184 @@ sequenceDiagram
     ProductController-->>-Client: ResponseEntity<List<Product>>
 ```
 
+### 3.8 Get Shopping Cart
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant ShoppingCartRepository
+    participant Database
+    
+    Client->>+ShoppingCartController: GET /api/cart/{userId}
+    ShoppingCartController->>+ShoppingCartService: getCartByUserId(userId)
+    ShoppingCartService->>+ShoppingCartRepository: findByUserId(userId)
+    ShoppingCartRepository->>+Database: SELECT * FROM shopping_carts WHERE user_id = ?
+    Database-->>-ShoppingCartRepository: Optional<ShoppingCart>
+    ShoppingCartRepository-->>-ShoppingCartService: Optional<ShoppingCart>
+    
+    alt Cart Found
+        ShoppingCartService-->>ShoppingCartController: ShoppingCart with items
+        ShoppingCartController-->>Client: ResponseEntity<ShoppingCart> (200)
+    else Cart Empty/Not Found
+        ShoppingCartService-->>ShoppingCartController: Empty ShoppingCart
+        ShoppingCartController-->>Client: ResponseEntity<ShoppingCart> (200) with empty items
+    end
+```
+
+### 3.9 Add Item to Cart
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant ShoppingCartRepository
+    participant CartItemRepository
+    participant ProductService
+    participant Database
+    
+    Client->>+ShoppingCartController: POST /api/cart/{userId}/items (productId, quantity)
+    ShoppingCartController->>+ShoppingCartService: addItemToCart(userId, productId, quantity)
+    
+    ShoppingCartService->>+ProductService: getProductById(productId)
+    ProductService-->>-ShoppingCartService: Product
+    
+    ShoppingCartService->>+ShoppingCartRepository: findByUserId(userId)
+    ShoppingCartRepository->>+Database: SELECT * FROM shopping_carts WHERE user_id = ?
+    Database-->>-ShoppingCartRepository: Optional<ShoppingCart>
+    ShoppingCartRepository-->>-ShoppingCartService: Optional<ShoppingCart>
+    
+    alt Cart Exists
+        ShoppingCartService->>+CartItemRepository: findByCartIdAndProductId(cartId, productId)
+        CartItemRepository-->>-ShoppingCartService: Optional<CartItem>
+        
+        alt Item Already in Cart
+            Note over ShoppingCartService: Update quantity
+            Note over ShoppingCartService: Recalculate subtotal
+        else New Item
+            Note over ShoppingCartService: Create new CartItem
+            ShoppingCartService->>+CartItemRepository: save(cartItem)
+            CartItemRepository->>+Database: INSERT INTO cart_items (...)
+            Database-->>-CartItemRepository: CartItem
+            CartItemRepository-->>-ShoppingCartService: CartItem
+        end
+    else Cart Does Not Exist
+        Note over ShoppingCartService: Create new ShoppingCart
+        ShoppingCartService->>+ShoppingCartRepository: save(newCart)
+        ShoppingCartRepository->>+Database: INSERT INTO shopping_carts (...)
+        Database-->>-ShoppingCartRepository: ShoppingCart
+        ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
+        
+        Note over ShoppingCartService: Create CartItem
+        ShoppingCartService->>+CartItemRepository: save(cartItem)
+        CartItemRepository-->>-ShoppingCartService: CartItem
+    end
+    
+    Note over ShoppingCartService: Recalculate cart total
+    ShoppingCartService->>+ShoppingCartRepository: save(updatedCart)
+    ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
+    ShoppingCartService-->>-ShoppingCartController: Updated ShoppingCart
+    ShoppingCartController-->>-Client: ResponseEntity<ShoppingCart> (200)
+```
+
+### 3.10 Update Cart Item Quantity
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant CartItemRepository
+    participant ShoppingCartRepository
+    participant Database
+    
+    Client->>+ShoppingCartController: PUT /api/cart/{userId}/items/{itemId} (quantity)
+    ShoppingCartController->>+ShoppingCartService: updateCartItemQuantity(userId, itemId, quantity)
+    
+    ShoppingCartService->>+CartItemRepository: findById(itemId)
+    CartItemRepository->>+Database: SELECT * FROM cart_items WHERE id = ?
+    Database-->>-CartItemRepository: Optional<CartItem>
+    CartItemRepository-->>-ShoppingCartService: Optional<CartItem>
+    
+    alt Item Found
+        Note over ShoppingCartService: Update quantity
+        Note over ShoppingCartService: Recalculate subtotal
+        ShoppingCartService->>+CartItemRepository: save(updatedItem)
+        CartItemRepository->>+Database: UPDATE cart_items SET quantity = ?, subtotal = ? WHERE id = ?
+        Database-->>-CartItemRepository: CartItem
+        CartItemRepository-->>-ShoppingCartService: CartItem
+        
+        Note over ShoppingCartService: Recalculate cart total
+        ShoppingCartService->>+ShoppingCartRepository: save(updatedCart)
+        ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
+        ShoppingCartService-->>ShoppingCartController: Updated ShoppingCart
+        ShoppingCartController-->>Client: ResponseEntity<ShoppingCart> (200)
+    else Item Not Found
+        ShoppingCartService-->>ShoppingCartController: throw CartItemNotFoundException
+        ShoppingCartController-->>Client: ResponseEntity (404)
+    end
+```
+
+### 3.11 Remove Item from Cart
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant CartItemRepository
+    participant ShoppingCartRepository
+    participant Database
+    
+    Client->>+ShoppingCartController: DELETE /api/cart/{userId}/items/{itemId}
+    ShoppingCartController->>+ShoppingCartService: removeItemFromCart(userId, itemId)
+    
+    ShoppingCartService->>+CartItemRepository: findById(itemId)
+    CartItemRepository->>+Database: SELECT * FROM cart_items WHERE id = ?
+    Database-->>-CartItemRepository: Optional<CartItem>
+    CartItemRepository-->>-ShoppingCartService: Optional<CartItem>
+    
+    alt Item Found
+        ShoppingCartService->>+CartItemRepository: deleteById(itemId)
+        CartItemRepository->>+Database: DELETE FROM cart_items WHERE id = ?
+        Database-->>-CartItemRepository: Success
+        CartItemRepository-->>-ShoppingCartService: void
+        
+        Note over ShoppingCartService: Recalculate cart total
+        ShoppingCartService->>+ShoppingCartRepository: save(updatedCart)
+        ShoppingCartRepository-->>-ShoppingCartService: ShoppingCart
+        ShoppingCartService-->>ShoppingCartController: Updated ShoppingCart
+        ShoppingCartController-->>Client: ResponseEntity<ShoppingCart> (200)
+    else Item Not Found
+        ShoppingCartService-->>ShoppingCartController: throw CartItemNotFoundException
+        ShoppingCartController-->>Client: ResponseEntity (404)
+    end
+```
+
+### 3.12 Clear Cart
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ShoppingCartController
+    participant ShoppingCartService
+    participant ShoppingCartRepository
+    participant Database
+    
+    Client->>+ShoppingCartController: DELETE /api/cart/{userId}
+    ShoppingCartController->>+ShoppingCartService: clearCart(userId)
+    
+    ShoppingCartService->>+ShoppingCartRepository: deleteByUserId(userId)
+    ShoppingCartRepository->>+Database: DELETE FROM shopping_carts WHERE user_id = ?
+    Note over Database: Cascade delete cart_items
+    Database-->>-ShoppingCartRepository: Success
+    ShoppingCartRepository-->>-ShoppingCartService: void
+    ShoppingCartService-->>-ShoppingCartController: void
+    ShoppingCartController-->>-Client: ResponseEntity (204)
+```
+
 ## 4. API Endpoints Summary
 
 | Method | Endpoint | Description | Request Body | Response |
@@ -280,6 +572,11 @@ sequenceDiagram
 | DELETE | `/api/products/{id}` | Delete product | None | None |
 | GET | `/api/products/category/{category}` | Get products by category | None | List<Product> |
 | GET | `/api/products/search?keyword={keyword}` | Search products by name | None | List<Product> |
+| GET | `/api/cart/{userId}` | Get shopping cart for user | None | ShoppingCart |
+| POST | `/api/cart/{userId}/items` | Add item to cart | CartItemRequest | ShoppingCart |
+| PUT | `/api/cart/{userId}/items/{itemId}` | Update cart item quantity | {quantity: Integer} | ShoppingCart |
+| DELETE | `/api/cart/{userId}/items/{itemId}` | Remove item from cart | None | ShoppingCart |
+| DELETE | `/api/cart/{userId}` | Clear entire cart | None | None |
 
 ## 5. Database Schema
 
@@ -298,6 +595,40 @@ CREATE TABLE products (
 
 CREATE INDEX idx_products_category ON products(category);
 CREATE INDEX idx_products_name ON products(name);
+```
+
+### Shopping Carts Table
+
+```sql
+CREATE TABLE shopping_carts (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL UNIQUE,
+    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_shopping_carts_user_id ON shopping_carts(user_id);
+```
+
+### Cart Items Table
+
+```sql
+CREATE TABLE cart_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    cart_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    product_name VARCHAR(255) NOT NULL,
+    product_price DECIMAL(10,2) NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    subtotal DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (cart_id) REFERENCES shopping_carts(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    UNIQUE KEY unique_cart_product (cart_id, product_id)
+);
+
+CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
+CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
 ```
 
 ## 6. Technology Stack
@@ -326,3 +657,60 @@ CREATE INDEX idx_products_name ON products(name);
 - Transactional operations for data consistency
 - Pagination support for large datasets (can be extended)
 - Search functionality with case-insensitive matching
+
+## 9. Shopping Cart Management Features (SCRUM-1140)
+
+### 9.1 Core Shopping Cart Functionality
+
+- **Add Products to Cart:** Users can add products with specified quantities to their shopping cart
+- **Update Quantities:** Users can modify the quantity of items already in their cart
+- **Remove Items:** Users can remove individual items from their cart
+- **Clear Cart:** Users can remove all items from their cart at once
+- **View Cart:** Users can view all items in their cart with product details and totals
+- **Empty Cart Message:** System displays appropriate message when cart is empty
+- **Automatic Total Calculation:** Cart total is automatically recalculated when items are added, updated, or removed
+
+### 9.2 Business Logic
+
+- Cart is user-specific (one cart per user)
+- Product information (name, price) is denormalized in cart items for historical accuracy
+- Subtotals are calculated as: quantity × product_price
+- Cart total is the sum of all item subtotals
+- When adding an existing product, quantity is updated rather than creating duplicate entries
+- Cart items are cascade deleted when cart is cleared
+- Stock validation should be performed before adding items (can be extended)
+
+### 9.3 Error Handling
+
+- **CartNotFoundException:** Thrown when cart is not found for a user
+- **CartItemNotFoundException:** Thrown when trying to update/remove non-existent cart item
+- **ProductNotFoundException:** Thrown when trying to add non-existent product to cart
+- **InvalidQuantityException:** Thrown when quantity is less than 1
+- **InsufficientStockException:** Thrown when requested quantity exceeds available stock (can be extended)
+
+### 9.4 Data Models
+
+**CartItemRequest DTO:**
+```java
+public class CartItemRequest {
+    private Long productId;
+    private Integer quantity;
+    // getters and setters
+}
+```
+
+**ShoppingCart Response includes:**
+- Cart ID
+- User ID
+- List of CartItems (with product details)
+- Total amount
+- Created and updated timestamps
+- Empty flag (true if no items)
+
+### 9.5 Validation Rules
+
+- Quantity must be greater than 0
+- Product must exist in products table
+- User ID must be valid
+- Price and amounts must be non-negative
+- Cart item must belong to the specified user's cart when updating/removing
