@@ -2,1039 +2,1322 @@
 ## E-Commerce Platform - Shopping Cart Module
 
 **Version:** 1.4  
-**Date:** 2024-01-21  
-**Status:** Updated  
-**Author:** Engineering Team  
+**Date:** 2024-01-15  
+**Status:** Approved  
+**Owner:** Backend Development Team
 
 ---
 
-## 1. Document Overview
+## 1. Document Control
 
-### 1.1 Purpose
-This Low Level Design (LLD) document provides detailed technical specifications for the Shopping Cart module of the E-Commerce Platform. It describes the component architecture, data models, API contracts, business logic, and implementation details required for development.
+### 1.1 Version History
+| Version | Date | Author | Changes |
+|---------|------|--------|----------|
+| 1.0 | 2024-01-01 | John Doe | Initial draft |
+| 1.1 | 2024-01-05 | Jane Smith | Added caching strategy |
+| 1.2 | 2024-01-10 | Mike Johnson | Updated database schema |
+| 1.3 | 2024-01-12 | Sarah Williams | Added security considerations |
+| 1.4 | 2024-01-15 | John Doe | Final review and approval |
 
-### 1.2 Scope
-This document covers:
-- Cart service architecture and components
-- Database schema and data models
-- API specifications and contracts
-- Business logic and validation rules
-- Integration points with other services
-- Error handling and edge cases
+### 1.2 Approvals
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| Tech Lead | John Doe | ✓ | 2024-01-15 |
+| Architect | Jane Smith | ✓ | 2024-01-15 |
+| Product Owner | Mike Johnson | ✓ | 2024-01-15 |
 
-### 1.3 Audience
-- Software Engineers
-- QA Engineers
-- Technical Leads
-- DevOps Engineers
+---
 
-### 1.4 References
+## 2. Introduction
+
+### 2.1 Purpose
+This document provides the low-level design specifications for the Shopping Cart module of the E-Commerce Platform. It details the technical implementation, data structures, APIs, and integration points required to build a scalable and performant shopping cart system.
+
+### 2.2 Scope
+The Shopping Cart module encompasses:
+- Cart creation and management
+- Item addition, removal, and quantity updates
+- Cart persistence across sessions
+- Price calculation and discount application
+- Integration with inventory and pricing services
+- Cart abandonment tracking
+
+### 2.3 References
 - High Level Design Document v2.1
-- API Design Standards v1.0
-- Database Design Guidelines v1.5
-- Security Standards v2.0
+- API Design Standards v1.5
+- Database Design Guidelines v3.0
+- Security Best Practices v2.0
 
 ---
 
-## 2. System Architecture
+## 3. System Architecture
 
-### 2.1 Architecture Overview
-
-```mermaid
-graph TB
-    Client[Web/Mobile Client]
-    Gateway[API Gateway]
-    CartService[Cart Service]
-    ProductService[Product Service]
-    UserService[User Service]
-    PricingService[Pricing Service]
-    DB[(Cart Database)]
-    Cache[(Redis Cache)]
-    Queue[Message Queue]
-    
-    Client --> Gateway
-    Gateway --> CartService
-    CartService --> ProductService
-    CartService --> UserService
-    CartService --> PricingService
-    CartService --> DB
-    CartService --> Cache
-    CartService --> Queue
+### 3.1 Component Overview
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     API Gateway Layer                        │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Shopping Cart Service                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │ Cart Manager │  │ Price Engine │  │ Validator    │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Redis      │    │  PostgreSQL  │    │  RabbitMQ    │
+│   Cache      │    │   Database   │    │  Message Q   │
+└──────────────┘    └──────────────┘    └──────────────┘
 ```
 
-### 2.2 Technology Stack
-
-| Component | Technology | Version |
-|-----------|------------|----------|
-| Backend Framework | Node.js + Express | 18.x / 4.x |
-| Database | PostgreSQL | 14.x |
-| Cache | Redis | 7.x |
-| Message Queue | RabbitMQ | 3.11.x |
-| API Documentation | OpenAPI/Swagger | 3.0 |
-| Testing | Jest | 29.x |
-| Logging | Winston | 3.x |
+### 3.2 Technology Stack
+- **Programming Language:** Python 3.11
+- **Framework:** FastAPI 0.104.1
+- **Database:** PostgreSQL 15.3
+- **Cache:** Redis 7.2
+- **Message Queue:** RabbitMQ 3.12
+- **Container:** Docker 24.0
+- **Orchestration:** Kubernetes 1.28
 
 ---
 
-## 3. Data Design
+## 4. Data Design
 
-### 3.1 Database Schema
+### 4.1 Database Schema
 
-#### 3.1.1 Cart Table
-
+#### 4.1.1 carts Table
 ```sql
 CREATE TABLE carts (
     cart_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     session_id VARCHAR(255),
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP,
-    total_amount DECIMAL(10,2) DEFAULT 0.00,
-    total_items INTEGER DEFAULT 0,
+    total_amount DECIMAL(10, 2) DEFAULT 0.00,
     currency VARCHAR(3) DEFAULT 'USD',
-    
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(user_id),
-    CONSTRAINT chk_status CHECK (status IN ('active', 'abandoned', 'converted', 'expired'))
+    INDEX idx_user_id (user_id),
+    INDEX idx_session_id (session_id),
+    INDEX idx_status (status)
 );
-
-CREATE INDEX idx_carts_user_id ON carts(user_id);
-CREATE INDEX idx_carts_session_id ON carts(session_id);
-CREATE INDEX idx_carts_status ON carts(status);
-CREATE INDEX idx_carts_expires_at ON carts(expires_at);
 ```
 
-#### 3.1.2 Cart Items Table
-
+#### 4.1.2 cart_items Table
 ```sql
 CREATE TABLE cart_items (
-    cart_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cart_id UUID NOT NULL,
     product_id UUID NOT NULL,
-    variant_id UUID,
-    quantity INTEGER NOT NULL DEFAULT 1,
-    unit_price DECIMAL(10,2) NOT NULL,
-    price_at_addition DECIMAL(10,2) NOT NULL,
-    subtotal DECIMAL(10,2) NOT NULL,
-    discount_amount DECIMAL(10,2) DEFAULT 0.00,
-    tax_amount DECIMAL(10,2) DEFAULT 0.00,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price DECIMAL(10, 2) NOT NULL,
+    discount_amount DECIMAL(10, 2) DEFAULT 0.00,
+    subtotal DECIMAL(10, 2) NOT NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_cart FOREIGN KEY (cart_id) REFERENCES carts(cart_id) ON DELETE CASCADE,
     CONSTRAINT fk_product FOREIGN KEY (product_id) REFERENCES products(product_id),
-    CONSTRAINT chk_quantity CHECK (quantity > 0),
-    CONSTRAINT chk_unit_price CHECK (unit_price >= 0),
-    CONSTRAINT chk_subtotal CHECK (subtotal >= 0)
+    INDEX idx_cart_id (cart_id),
+    INDEX idx_product_id (product_id)
 );
-
-CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
-CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
-CREATE UNIQUE INDEX idx_cart_items_unique ON cart_items(cart_id, product_id, variant_id);
 ```
 
-**Price Snapshot Mechanism:**
-The `price_at_addition` field captures the product price at the moment the item is added to the cart. This enables:
-- Price change detection by comparing with current product price
-- Historical price tracking for audit purposes
-- Price protection for customers during checkout
-- Business logic to notify users of price changes before purchase
+#### 4.1.3 cart_discounts Table
+```sql
+CREATE TABLE cart_discounts (
+    discount_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cart_id UUID NOT NULL,
+    coupon_code VARCHAR(50),
+    discount_type VARCHAR(20) NOT NULL,
+    discount_value DECIMAL(10, 2) NOT NULL,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cart_discount FOREIGN KEY (cart_id) REFERENCES carts(cart_id) ON DELETE CASCADE,
+    INDEX idx_cart_id (cart_id)
+);
+```
 
-### 3.2 Data Models
+### 4.2 Data Models
 
-#### 3.2.1 Cart Model
+#### 4.2.1 Cart Model
+```python
+from pydantic import BaseModel, Field, validator
+from typing import List, Optional
+from datetime import datetime
+from uuid import UUID
+from decimal import Decimal
 
-```javascript
-class Cart {
-    constructor(data) {
-        this.cartId = data.cart_id;
-        this.userId = data.user_id;
-        this.sessionId = data.session_id;
-        this.status = data.status;
-        this.createdAt = data.created_at;
-        this.updatedAt = data.updated_at;
-        this.expiresAt = data.expires_at;
-        this.totalAmount = data.total_amount;
-        this.totalItems = data.total_items;
-        this.currency = data.currency;
-        this.items = [];
-    }
+class CartItem(BaseModel):
+    item_id: UUID
+    product_id: UUID
+    product_name: str
+    quantity: int = Field(gt=0)
+    unit_price: Decimal = Field(ge=0)
+    discount_amount: Decimal = Field(ge=0, default=0)
+    subtotal: Decimal = Field(ge=0)
+    added_at: datetime
+    updated_at: datetime
 
-    addItem(item) {
-        this.items.push(item);
-        this.recalculateTotals();
-    }
+    @validator('subtotal')
+    def calculate_subtotal(cls, v, values):
+        if 'quantity' in values and 'unit_price' in values:
+            return (values['quantity'] * values['unit_price']) - values.get('discount_amount', 0)
+        return v
 
-    removeItem(cartItemId) {
-        this.items = this.items.filter(item => item.cartItemId !== cartItemId);
-        this.recalculateTotals();
-    }
+class CartDiscount(BaseModel):
+    discount_id: UUID
+    coupon_code: Optional[str]
+    discount_type: str  # 'percentage', 'fixed', 'shipping'
+    discount_value: Decimal = Field(ge=0)
+    applied_at: datetime
 
-    updateItemQuantity(cartItemId, quantity) {
-        const item = this.items.find(item => item.cartItemId === cartItemId);
-        if (item) {
-            item.quantity = quantity;
-            item.subtotal = item.unitPrice * quantity;
-            this.recalculateTotals();
+class Cart(BaseModel):
+    cart_id: UUID
+    user_id: UUID
+    session_id: Optional[str]
+    status: str = 'active'  # 'active', 'abandoned', 'converted', 'expired'
+    items: List[CartItem] = []
+    discounts: List[CartDiscount] = []
+    total_amount: Decimal = Field(ge=0)
+    currency: str = 'USD'
+    created_at: datetime
+    updated_at: datetime
+    expires_at: Optional[datetime]
+
+    @validator('total_amount')
+    def calculate_total(cls, v, values):
+        if 'items' in values and 'discounts' in values:
+            items_total = sum(item.subtotal for item in values['items'])
+            discount_total = sum(d.discount_value for d in values['discounts'])
+            return max(items_total - discount_total, 0)
+        return v
+```
+
+### 4.3 Cache Structure
+
+#### 4.3.1 Redis Key Patterns
+```
+cart:{cart_id}                    # Cart object (TTL: 24 hours)
+cart:user:{user_id}               # User's active cart ID (TTL: 24 hours)
+cart:session:{session_id}         # Session's cart ID (TTL: 24 hours)
+cart:items:{cart_id}              # Cart items list (TTL: 24 hours)
+product:price:{product_id}        # Product price cache (TTL: 1 hour)
+product:inventory:{product_id}    # Product inventory (TTL: 5 minutes)
+```
+
+#### 4.3.2 Cache Data Structure
+```python
+# Cart cache structure (JSON)
+{
+    "cart_id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "660e8400-e29b-41d4-a716-446655440001",
+    "items": [
+        {
+            "item_id": "770e8400-e29b-41d4-a716-446655440002",
+            "product_id": "880e8400-e29b-41d4-a716-446655440003",
+            "quantity": 2,
+            "unit_price": 29.99,
+            "subtotal": 59.98
         }
-    }
-
-    recalculateTotals() {
-        this.totalItems = this.items.reduce((sum, item) => sum + item.quantity, 0);
-        this.totalAmount = this.items.reduce((sum, item) => sum + item.subtotal, 0);
-    }
-
-    isEmpty() {
-        return this.items.length === 0;
-    }
-}
-```
-
-#### 3.2.2 Cart Item Model
-
-```javascript
-class CartItem {
-    constructor(data) {
-        this.cartItemId = data.cart_item_id;
-        this.cartId = data.cart_id;
-        this.productId = data.product_id;
-        this.variantId = data.variant_id;
-        this.quantity = data.quantity;
-        this.unitPrice = data.unit_price;
-        this.priceAtAddition = data.price_at_addition;
-        this.subtotal = data.subtotal;
-        this.discountAmount = data.discount_amount;
-        this.taxAmount = data.tax_amount;
-        this.updatedAt = data.updated_at;
-    }
-
-    calculateSubtotal() {
-        return this.unitPrice * this.quantity;
-    }
-    
-    hasPriceChanged() {
-        return this.unitPrice !== this.priceAtAddition;
-    }
-    
-    getPriceChangeDelta() {
-        return this.unitPrice - this.priceAtAddition;
-    }
+    ],
+    "total_amount": 59.98,
+    "updated_at": "2024-01-15T10:30:00Z"
 }
 ```
 
 ---
 
-## 4. Component Design
+## 5. API Design
 
-### 4.1 Cart Service Components
+### 5.1 RESTful Endpoints
 
-```mermaid
-graph TB
-    Controller[Cart Controller]
-    Service[Cart Service]
-    Repository[Cart Repository]
-    Validator[Input Validator]
-    PriceService[Price Calculator]
-    EventPublisher[Event Publisher]
-    CacheManager[Cache Manager]
-    
-    Controller --> Validator
-    Controller --> Service
-    Service --> Repository
-    Service --> PriceService
-    Service --> EventPublisher
-    Service --> CacheManager
+#### 5.1.1 Create Cart
 ```
-
-### 4.2 Presentation Layer Components
-
-The presentation layer handles user interactions and UI state management for the shopping cart:
-
-#### 4.2.1 Cart View Interface
-- **Purpose**: Main cart display component
-- **Responsibilities**:
-  - Render cart items with product details
-  - Display quantity controls and remove buttons
-  - Show cart totals and pricing breakdown
-  - Handle loading and error states
-
-#### 4.2.2 Empty Cart View
-- **Purpose**: Display when cart has no items
-- **Responsibilities**:
-  - Show empty cart message/illustration
-  - Provide 'continue shopping' redirection link
-  - Suggest popular or recommended products
-
-#### 4.2.3 Add to Cart Handler
-- **Purpose**: Manages add-to-cart interactions
-- **Responsibilities**:
-  - Capture product selection and quantity
-  - Validate input before API call
-  - Show success/error feedback
-  - Update cart badge/counter
-
-#### 4.2.4 Quantity Updater Component
-- **Purpose**: Handles quantity modifications
-- **Responsibilities**:
-  - Provide increment/decrement controls
-  - Validate quantity constraints (min/max)
-  - Trigger API updates on change
-  - Show loading state during updates
-
-### 4.3 Cart Service
-
-#### 4.3.1 Business Logic
-
-**Core Operations:**
-
-1. **Add Item to Cart**
-   - Validate product availability
-   - Check inventory stock
-   - Fetch current product price (price snapshot mechanism)
-   - Capture price at addition time in `price_at_addition` field
-   - Check for existing item (same product + variant)
-   - If exists: increment quantity
-   - If new: create cart item entry
-   - **Default Quantity Handling**: If quantity parameter is not provided in the request, the system automatically defaults to quantity = 1
-   - Recalculate cart totals
-   - Update cache
-   - Publish cart_item_added event
-
-2. **Update Item Quantity**
-   - Validate quantity constraints (min: 1, max: stock level)
-   - Check inventory availability
-   - Update cart item quantity
-   - **Automatic Recalculation Trigger**: Upon any PUT /api/v1/cart/items/{itemId} operation, the system must immediately recalculate item subtotal (unit_price × new_quantity) and cart total (sum of all item subtotals) before returning the response. This is a mandatory post-update operation that ensures data consistency.
-   - **Quantity mutation via PUT triggers automatic recalculation**: When quantity is updated, the system automatically recalculates the item subtotal (unit_price × new_quantity) and updates the cart total by summing all item subtotals
-   - Update cache
-   - Publish cart_item_updated event
-
-3. **Remove Item from Cart**
-   - Validate cart item exists
-   - Delete cart item
-   - Recalculate cart totals
-   - Update cache
-   - Publish cart_item_removed event
-
-4. **Get Cart**
-   - Check cache first
-   - If cache miss: fetch from database
-   - Enrich with product details
-   - Calculate individual item subtotals (price × quantity)
-   - Update cache
-   - Return cart with items including subtotal field
-
-5. **Clear Cart**
-   - Delete all cart items
-   - Reset cart totals
-   - Update cache
-   - Publish cart_cleared event
-
-#### 4.3.2 Empty Cart Handling
-
-When a cart becomes empty (all items removed or cart cleared):
-- Set `total_items` to 0
-- Set `total_amount` to 0.00
-- Maintain cart record (don't delete)
-- **Empty Cart State Business Rule**: When cart is empty (itemCount = 0), the system must return an empty cart indicator in the API response, and the frontend must display the Empty Cart View component with a prominent 'continue shopping' redirection link (typically to homepage or product catalog)
-- **Empty cart state triggers UI 'continue shopping' redirection link**: The frontend receives an empty cart response and displays the Empty Cart View component with a prominent call-to-action link redirecting users to continue shopping (typically to homepage or product catalog)
-- Cache the empty state
-- Publish cart_emptied event
-
-#### 4.3.3 Validation Rules
-
-| Rule | Description | Error Code |
-|------|-------------|------------|
-| Product Exists | Product must exist and be active | PRODUCT_NOT_FOUND |
-| Stock Available | Requested quantity must be ≤ available stock | INSUFFICIENT_STOCK |
-| Quantity Range | Quantity must be between 1 and max_per_order | INVALID_QUANTITY |
-| Cart Limit | Total items in cart ≤ 100 | CART_LIMIT_EXCEEDED |
-| Price Valid | Unit price must be > 0 | INVALID_PRICE |
-| User Authorized | User must own the cart | UNAUTHORIZED_ACCESS |
-
-#### 4.3.4 Price Calculation
-
-```javascript
-class PriceCalculator {
-    calculateItemSubtotal(unitPrice, quantity, discounts = []) {
-        let subtotal = unitPrice * quantity;
-        
-        // Apply item-level discounts
-        discounts.forEach(discount => {
-            if (discount.type === 'percentage') {
-                subtotal -= subtotal * (discount.value / 100);
-            } else if (discount.type === 'fixed') {
-                subtotal -= discount.value;
-            }
-        });
-        
-        return Math.max(0, subtotal);
-    }
-
-    calculateCartTotal(items, cartLevelDiscounts = []) {
-        let total = items.reduce((sum, item) => sum + item.subtotal, 0);
-        
-        // Apply cart-level discounts
-        cartLevelDiscounts.forEach(discount => {
-            if (discount.type === 'percentage') {
-                total -= total * (discount.value / 100);
-            } else if (discount.type === 'fixed') {
-                total -= discount.value;
-            }
-        });
-        
-        return Math.max(0, total);
-    }
-
-    calculateTax(subtotal, taxRate) {
-        return subtotal * (taxRate / 100);
-    }
-}
-```
-
-### 4.4 Repository Layer
-
-```javascript
-class CartRepository {
-    async createCart(userId, sessionId) {
-        const query = `
-            INSERT INTO carts (user_id, session_id, status, expires_at)
-            VALUES ($1, $2, 'active', NOW() + INTERVAL '30 days')
-            RETURNING *
-        `;
-        return await db.query(query, [userId, sessionId]);
-    }
-
-    async getCartByUserId(userId) {
-        const query = `
-            SELECT c.*, 
-                   json_agg(
-                       json_build_object(
-                           'cart_item_id', ci.cart_item_id,
-                           'product_id', ci.product_id,
-                           'variant_id', ci.variant_id,
-                           'quantity', ci.quantity,
-                           'unit_price', ci.unit_price,
-                           'price_at_addition', ci.price_at_addition,
-                           'subtotal', ci.subtotal
-                       )
-                   ) FILTER (WHERE ci.cart_item_id IS NOT NULL) as items
-            FROM carts c
-            LEFT JOIN cart_items ci ON c.cart_id = ci.cart_id
-            WHERE c.user_id = $1 AND c.status = 'active'
-            GROUP BY c.cart_id
-        `;
-        return await db.query(query, [userId]);
-    }
-
-    async addItemToCart(cartId, productId, variantId, quantity, unitPrice) {
-        const query = `
-            INSERT INTO cart_items (cart_id, product_id, variant_id, quantity, unit_price, price_at_addition, subtotal)
-            VALUES ($1, $2, $3, $4, $5, $5, $6)
-            ON CONFLICT (cart_id, product_id, variant_id)
-            DO UPDATE SET 
-                quantity = cart_items.quantity + EXCLUDED.quantity,
-                subtotal = cart_items.unit_price * (cart_items.quantity + EXCLUDED.quantity),
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING *
-        `;
-        const subtotal = unitPrice * quantity;
-        return await db.query(query, [cartId, productId, variantId, quantity, unitPrice, subtotal]);
-    }
-
-    async updateItemQuantity(cartItemId, quantity) {
-        const query = `
-            UPDATE cart_items
-            SET quantity = $2,
-                subtotal = unit_price * $2,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE cart_item_id = $1
-            RETURNING *
-        `;
-        return await db.query(query, [cartItemId, quantity]);
-    }
-
-    async removeItem(cartItemId) {
-        const query = `DELETE FROM cart_items WHERE cart_item_id = $1`;
-        return await db.query(query, [cartItemId]);
-    }
-
-    async updateCartTotals(cartId) {
-        const query = `
-            UPDATE carts
-            SET total_items = (SELECT COALESCE(SUM(quantity), 0) FROM cart_items WHERE cart_id = $1),
-                total_amount = (SELECT COALESCE(SUM(subtotal), 0) FROM cart_items WHERE cart_id = $1),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE cart_id = $1
-            RETURNING *
-        `;
-        return await db.query(query, [cartId]);
-    }
-}
-```
-
----
-
-## 5. API Specifications
-
-### 5.1 API Endpoints Overview
-
-**Base Path**: `/api/v1`
-
-**API Gateway Configuration**: All cart endpoints are prefixed with `/api/v1` for API versioning consistency.
-
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------|
-| GET | /api/v1/cart | Get user's cart | Yes |
-| POST | /api/v1/cart/items | Add item to cart | Yes |
-| PUT | /api/v1/cart/items/:id | Update item quantity | Yes |
-| DELETE | /api/v1/cart/items/:id | Remove item from cart | Yes |
-| DELETE | /api/v1/cart | Clear entire cart | Yes |
-| POST | /api/v1/cart/merge | Merge guest cart with user cart | Yes |
-
-### 5.2 Get Cart API
-
-#### GET /api/v1/cart
-
-**Description:** Retrieve the current user's active shopping cart with all items.
-
-**Request Headers:**
-```
-Authorization: Bearer {jwt_token}
+POST /api/v1/cart
 Content-Type: application/json
-```
+Authorization: Bearer {token}
 
-**Response (200 OK):**
-```json
+Request Body:
 {
-    "success": true,
-    "data": {
-        "cartId": "550e8400-e29b-41d4-a716-446655440000",
-        "userId": "123e4567-e89b-12d3-a456-426614174000",
-        "status": "active",
-        "totalItems": 3,
-        "totalAmount": 299.97,
-        "currency": "USD",
-        "items": [
-            {
-                "cartItemId": "660e8400-e29b-41d4-a716-446655440001",
-                "productId": "prod_001",
-                "productName": "Wireless Headphones",
-                "variantId": "var_001",
-                "variantName": "Black",
-                "quantity": 2,
-                "unitPrice": 99.99,
-                "priceAtAddition": 99.99,
-                "subtotal": 199.98,
-                "imageUrl": "https://cdn.example.com/images/prod_001.jpg"
-            },
-            {
-                "cartItemId": "660e8400-e29b-41d4-a716-446655440002",
-                "productId": "prod_002",
-                "productName": "USB-C Cable",
-                "variantId": null,
-                "variantName": null,
-                "quantity": 1,
-                "unitPrice": 99.99,
-                "priceAtAddition": 89.99,
-                "subtotal": 99.99,
-                "imageUrl": "https://cdn.example.com/images/prod_002.jpg"
-            }
-        ],
-        "createdAt": "2024-01-21T10:30:00Z",
-        "updatedAt": "2024-01-21T11:15:00Z"
-    }
+    "user_id": "660e8400-e29b-41d4-a716-446655440001",
+    "session_id": "sess_abc123xyz"
+}
+
+Response (201 Created):
+{
+    "cart_id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "660e8400-e29b-41d4-a716-446655440001",
+    "status": "active",
+    "items": [],
+    "total_amount": 0.00,
+    "currency": "USD",
+    "created_at": "2024-01-15T10:30:00Z",
+    "expires_at": "2024-01-16T10:30:00Z"
 }
 ```
 
-**Response Field Specifications:**
-- `subtotal`: Calculated as `unitPrice × quantity` for each cart item. This field is mandatory in the response and represents the individual item total before cart-level discounts.
-- `priceAtAddition`: The product price captured at the moment the item was added to the cart, enabling price change detection.
+#### 5.1.2 Get Cart
+```
+GET /api/v1/cart/{cart_id}
+Authorization: Bearer {token}
 
-**Response (200 OK) - Empty Cart:**
-```json
+Response (200 OK):
 {
-    "success": true,
-    "data": {
-        "cartId": "550e8400-e29b-41d4-a716-446655440000",
-        "userId": "123e4567-e89b-12d3-a456-426614174000",
-        "status": "active",
-        "totalItems": 0,
-        "totalAmount": 0.00,
-        "currency": "USD",
-        "items": [],
-        "isEmpty": true,
-        "createdAt": "2024-01-21T10:30:00Z",
-        "updatedAt": "2024-01-21T11:15:00Z"
-    }
+    "cart_id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "660e8400-e29b-41d4-a716-446655440001",
+    "status": "active",
+    "items": [
+        {
+            "item_id": "770e8400-e29b-41d4-a716-446655440002",
+            "product_id": "880e8400-e29b-41d4-a716-446655440003",
+            "product_name": "Wireless Mouse",
+            "quantity": 2,
+            "unit_price": 29.99,
+            "discount_amount": 0.00,
+            "subtotal": 59.98
+        }
+    ],
+    "discounts": [],
+    "total_amount": 59.98,
+    "currency": "USD",
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T10:35:00Z",
+    "expires_at": "2024-01-16T10:30:00Z"
 }
 ```
 
-**Empty Cart Response Specification:**
-- `isEmpty`: Boolean flag set to `true` when `totalItems = 0`, triggering the frontend to display the Empty Cart View with 'continue shopping' redirection link.
-
-### 5.3 Cart APIs
-
-#### POST /api/v1/cart/items
-
-**Description:** Add a product to the shopping cart. If the item already exists, increment its quantity. **API contract explicitly states default quantity is 1 when not provided** - if the quantity field is omitted from the request body, the system will automatically use a quantity of 1.
-
-**Request Headers:**
+#### 5.1.3 Add Item to Cart
 ```
-Authorization: Bearer {jwt_token}
+POST /api/v1/cart/{cart_id}/items
 Content-Type: application/json
-```
+Authorization: Bearer {token}
 
-**Request Body:**
-```json
+Request Body:
 {
-    "productId": "prod_001",
-    "variantId": "var_001",
+    "product_id": "880e8400-e29b-41d4-a716-446655440003",
     "quantity": 2
 }
-```
 
-**Request Body (quantity omitted - defaults to 1):**
-```json
+Response (201 Created):
 {
-    "productId": "prod_001",
-    "variantId": "var_001"
+    "item_id": "770e8400-e29b-41d4-a716-446655440002",
+    "product_id": "880e8400-e29b-41d4-a716-446655440003",
+    "product_name": "Wireless Mouse",
+    "quantity": 2,
+    "unit_price": 29.99,
+    "discount_amount": 0.00,
+    "subtotal": 59.98,
+    "added_at": "2024-01-15T10:35:00Z"
 }
 ```
 
-**Validation Rules:**
-- `productId`: Required, must be valid UUID
-- `variantId`: Optional, must be valid UUID if provided
-- `quantity`: Optional, integer, min: 1, max: 99, **defaults to 1 if not provided**
-
-**Default Quantity Handling Logic:**
-```javascript
-const quantity = req.body.quantity || 1; // Default to 1 if not provided
+#### 5.1.4 Update Item Quantity
 ```
-
-**Response (201 Created):**
-```json
-{
-    "success": true,
-    "message": "Item added to cart successfully",
-    "data": {
-        "cartItemId": "660e8400-e29b-41d4-a716-446655440001",
-        "cartId": "550e8400-e29b-41d4-a716-446655440000",
-        "productId": "prod_001",
-        "variantId": "var_001",
-        "quantity": 2,
-        "unitPrice": 99.99,
-        "priceAtAddition": 99.99,
-        "subtotal": 199.98
-    }
-}
-```
-
-**Error Responses:**
-
-```json
-// 400 Bad Request - Invalid Input
-{
-    "success": false,
-    "error": {
-        "code": "INVALID_INPUT",
-        "message": "Invalid product ID format",
-        "details": {
-            "field": "productId",
-            "value": "invalid_id"
-        }
-    }
-}
-
-// 404 Not Found - Product Not Found
-{
-    "success": false,
-    "error": {
-        "code": "PRODUCT_NOT_FOUND",
-        "message": "Product not found or inactive",
-        "details": {
-            "productId": "prod_001"
-        }
-    }
-}
-
-// 409 Conflict - Insufficient Stock
-{
-    "success": false,
-    "error": {
-        "code": "INSUFFICIENT_STOCK",
-        "message": "Requested quantity exceeds available stock",
-        "details": {
-            "productId": "prod_001",
-            "requestedQuantity": 10,
-            "availableStock": 5
-        }
-    }
-}
-```
-
-#### PUT /api/v1/cart/items/:id
-
-**Description:** Update the quantity of an item in the cart. **Automatic recalculation is triggered immediately upon successful update.**
-
-**Request Headers:**
-```
-Authorization: Bearer {jwt_token}
+PUT /api/v1/cart/{cart_id}/items/{item_id}
 Content-Type: application/json
-```
+Authorization: Bearer {token}
 
-**Request Body:**
-```json
+Request Body:
 {
-    "quantity": 5
+    "quantity": 3
 }
-```
 
-**Validation Rules:**
-- `quantity`: Required, integer, min: 1, max: 99
-
-**Recalculation Logic:**
-Upon any PUT /api/v1/cart/items/{itemId} operation:
-1. Update cart item quantity in database
-2. Immediately recalculate item subtotal: `subtotal = unit_price × new_quantity`
-3. Immediately recalculate cart total: `total_amount = SUM(all item subtotals)`
-4. Update `updated_at` timestamp
-5. Return response with updated values
-
-This is a mandatory post-update operation ensuring data consistency.
-
-**Response (200 OK):**
-```json
+Response (200 OK):
 {
-    "success": true,
-    "message": "Cart item updated successfully",
-    "data": {
-        "cartItemId": "660e8400-e29b-41d4-a716-446655440001",
-        "quantity": 5,
-        "unitPrice": 99.99,
-        "subtotal": 499.95,
-        "updatedAt": "2024-01-21T11:30:00Z"
-    }
+    "item_id": "770e8400-e29b-41d4-a716-446655440002",
+    "product_id": "880e8400-e29b-41d4-a716-446655440003",
+    "product_name": "Wireless Mouse",
+    "quantity": 3,
+    "unit_price": 29.99,
+    "discount_amount": 0.00,
+    "subtotal": 89.97,
+    "updated_at": "2024-01-15T10:40:00Z"
 }
 ```
 
-#### DELETE /api/v1/cart/items/:id
-
-**Description:** Remove an item from the cart.
-
-**Request Headers:**
+#### 5.1.5 Remove Item from Cart
 ```
-Authorization: Bearer {jwt_token}
+DELETE /api/v1/cart/{cart_id}/items/{item_id}
+Authorization: Bearer {token}
+
+Response (204 No Content)
 ```
 
-**Response (200 OK):**
-```json
+#### 5.1.6 Apply Discount
+```
+POST /api/v1/cart/{cart_id}/discounts
+Content-Type: application/json
+Authorization: Bearer {token}
+
+Request Body:
 {
-    "success": true,
-    "message": "Item removed from cart successfully",
-    "data": {
-        "cartItemId": "660e8400-e29b-41d4-a716-446655440001",
-        "removedAt": "2024-01-21T11:45:00Z"
-    }
+    "coupon_code": "SAVE10"
 }
-```
 
-#### DELETE /api/v1/cart
-
-**Description:** Clear all items from the cart.
-
-**Request Headers:**
-```
-Authorization: Bearer {jwt_token}
-```
-
-**Response (200 OK):**
-```json
+Response (200 OK):
 {
-    "success": true,
-    "message": "Cart cleared successfully",
-    "data": {
-        "cartId": "550e8400-e29b-41d4-a716-446655440000",
-        "clearedAt": "2024-01-21T12:00:00Z"
-    }
+    "discount_id": "990e8400-e29b-41d4-a716-446655440004",
+    "coupon_code": "SAVE10",
+    "discount_type": "percentage",
+    "discount_value": 8.99,
+    "applied_at": "2024-01-15T10:45:00Z",
+    "new_total": 80.98
 }
 ```
 
----
+#### 5.1.7 Clear Cart
+```
+DELETE /api/v1/cart/{cart_id}
+Authorization: Bearer {token}
 
-## 6. Integration Points
-
-### 6.1 Product Service Integration
-
-**Purpose:** Validate product availability and fetch current prices.
-
-**API Calls:**
-
-```javascript
-// Get Product Details
-GET /api/v1/products/:productId
-Response: {
-    productId, name, price, stock, status, images
-}
-
-// Check Stock Availability
-GET /api/v1/products/:productId/stock
-Response: {
-    productId, availableStock, reserved, status
-}
-
-// Reserve Stock (during checkout)
-POST /api/v1/products/:productId/reserve
-Body: { quantity, cartId }
-Response: {
-    reservationId, expiresAt
-}
+Response (204 No Content)
 ```
 
-### 6.2 User Service Integration
+### 5.2 Error Responses
 
-**Purpose:** Validate user authentication and fetch user preferences.
-
-**API Calls:**
-
-```javascript
-// Validate User Token
-GET /api/v1/users/validate
-Headers: { Authorization: Bearer {token} }
-Response: {
-    userId, email, status
-}
-
-// Get User Preferences
-GET /api/v1/users/:userId/preferences
-Response: {
-    currency, language, notifications
-}
-```
-
-### 6.3 Pricing Service Integration
-
-**Purpose:** Calculate discounts, taxes, and promotional prices.
-
-**API Calls:**
-
-```javascript
-// Calculate Cart Pricing
-POST /api/v1/pricing/calculate
-Body: {
-    items: [{ productId, quantity, basePrice }],
-    userId,
-    promoCode
-}
-Response: {
-    items: [{ productId, unitPrice, discount, tax, subtotal }],
-    cartTotal,
-    totalDiscount,
-    totalTax
-}
-```
-
-### 6.4 Event Publishing
-
-**Events Published:**
-
-```javascript
-// Cart Item Added Event
+```python
+# Standard error response format
 {
-    eventType: 'cart.item.added',
-    timestamp: '2024-01-21T10:30:00Z',
-    data: {
-        cartId,
-        userId,
-        productId,
-        quantity,
-        unitPrice
-    }
-}
-
-// Cart Item Updated Event
-{
-    eventType: 'cart.item.updated',
-    timestamp: '2024-01-21T11:30:00Z',
-    data: {
-        cartId,
-        cartItemId,
-        oldQuantity,
-        newQuantity
-    }
-}
-
-// Cart Item Removed Event
-{
-    eventType: 'cart.item.removed',
-    timestamp: '2024-01-21T11:45:00Z',
-    data: {
-        cartId,
-        cartItemId,
-        productId
-    }
-}
-
-// Cart Cleared Event
-{
-    eventType: 'cart.cleared',
-    timestamp: '2024-01-21T12:00:00Z',
-    data: {
-        cartId,
-        userId,
-        itemCount
-    }
-}
-```
-
----
-
-## 7. Caching Strategy
-
-### 7.1 Cache Keys
-
-```
-cart:{userId}                    - Complete cart data
-cart:items:{cartId}              - Cart items list
-product:price:{productId}        - Product price cache
-product:stock:{productId}        - Product stock cache
-```
-
-### 7.2 Cache TTL
-
-| Cache Key | TTL | Invalidation Trigger |
-|-----------|-----|----------------------|
-| cart:{userId} | 1 hour | Cart modification |
-| cart:items:{cartId} | 1 hour | Item add/update/remove |
-| product:price:{productId} | 5 minutes | Price update event |
-| product:stock:{productId} | 2 minutes | Stock update event |
-
-### 7.3 Cache Implementation
-
-```javascript
-class CacheManager {
-    constructor(redisClient) {
-        this.redis = redisClient;
-    }
-
-    async getCart(userId) {
-        const key = `cart:${userId}`;
-        const cached = await this.redis.get(key);
-        return cached ? JSON.parse(cached) : null;
-    }
-
-    async setCart(userId, cartData, ttl = 3600) {
-        const key = `cart:${userId}`;
-        await this.redis.setex(key, ttl, JSON.stringify(cartData));
-    }
-
-    async invalidateCart(userId) {
-        const key = `cart:${userId}`;
-        await this.redis.del(key);
-    }
-
-    async getProductPrice(productId) {
-        const key = `product:price:${productId}`;
-        const cached = await this.redis.get(key);
-        return cached ? parseFloat(cached) : null;
-    }
-
-    async setProductPrice(productId, price, ttl = 300) {
-        const key = `product:price:${productId}`;
-        await this.redis.setex(key, ttl, price.toString());
-    }
-}
-```
-
----
-
-## 8. Error Handling
-
-### 8.1 Error Codes
-
-| Error Code | HTTP Status | Description |
-|------------|-------------|-------------|
-| INVALID_INPUT | 400 | Request validation failed |
-| UNAUTHORIZED_ACCESS | 401 | Authentication failed |
-| FORBIDDEN | 403 | User not authorized for resource |
-| PRODUCT_NOT_FOUND | 404 | Product does not exist |
-| CART_NOT_FOUND | 404 | Cart does not exist |
-| CART_ITEM_NOT_FOUND | 404 | Cart item does not exist |
-| INSUFFICIENT_STOCK | 409 | Not enough stock available |
-| CART_LIMIT_EXCEEDED | 409 | Cart item limit reached |
-| INVALID_QUANTITY | 400 | Quantity out of valid range |
-| PRICE_MISMATCH | 409 | Price changed since added |
-| SERVICE_UNAVAILABLE | 503 | External service unavailable |
-| INTERNAL_ERROR | 500 | Unexpected server error |
-
-### 8.2 Error Response Format
-
-```json
-{
-    "success": false,
     "error": {
-        "code": "ERROR_CODE",
-        "message": "Human-readable error message",
-        "details": {
-            "field": "fieldName",
-            "value": "invalidValue",
-            "constraint": "validation rule"
-        },
-        "timestamp": "2024-01-21T10:30:00Z",
-        "requestId": "req_123456789"
+        "code": "CART_NOT_FOUND",
+        "message": "Cart with ID 550e8400-e29b-41d4-a716-446655440000 not found",
+        "details": {},
+        "timestamp": "2024-01-15T10:50:00Z"
     }
+}
+
+# Error codes
+CODE_MAP = {
+    "CART_NOT_FOUND": 404,
+    "ITEM_NOT_FOUND": 404,
+    "INVALID_QUANTITY": 400,
+    "PRODUCT_OUT_OF_STOCK": 409,
+    "INVALID_COUPON": 400,
+    "CART_EXPIRED": 410,
+    "UNAUTHORIZED": 401,
+    "INTERNAL_ERROR": 500
 }
 ```
 
-### 8.3 Error Handling Implementation
+---
 
-```javascript
-class ErrorHandler {
-    static handle(error, req, res, next) {
-        const errorResponse = {
-            success: false,
-            error: {
-                code: error.code || 'INTERNAL_ERROR',
-                message: error.message || 'An unexpected error occurred',
-                details: error.details || {},
-                timestamp: new Date().toISOString(),
-                requestId: req.id
+## 6. Component Design
+
+### 6.1 Cart Manager
+
+```python
+from typing import Optional, List
+from uuid import UUID
+from decimal import Decimal
+import asyncio
+
+class CartManager:
+    """
+    Core component responsible for cart lifecycle management.
+    """
+    
+    def __init__(self, db_service, cache_service, event_bus):
+        self.db = db_service
+        self.cache = cache_service
+        self.event_bus = event_bus
+        self.cart_ttl = 86400  # 24 hours
+    
+    async def create_cart(self, user_id: UUID, session_id: Optional[str] = None) -> Cart:
+        """
+        Create a new shopping cart for a user.
+        
+        Args:
+            user_id: User identifier
+            session_id: Optional session identifier for guest users
+            
+        Returns:
+            Cart: Newly created cart object
+            
+        Raises:
+            DatabaseError: If cart creation fails
+        """
+        cart_data = {
+            'user_id': user_id,
+            'session_id': session_id,
+            'status': 'active',
+            'total_amount': Decimal('0.00'),
+            'currency': 'USD'
+        }
+        
+        # Create cart in database
+        cart = await self.db.create_cart(cart_data)
+        
+        # Cache the cart
+        await self.cache.set(
+            f"cart:{cart.cart_id}",
+            cart.dict(),
+            ttl=self.cart_ttl
+        )
+        
+        # Set user/session mapping
+        await self.cache.set(
+            f"cart:user:{user_id}",
+            str(cart.cart_id),
+            ttl=self.cart_ttl
+        )
+        
+        # Publish cart created event
+        await self.event_bus.publish('cart.created', {
+            'cart_id': str(cart.cart_id),
+            'user_id': str(user_id),
+            'timestamp': cart.created_at.isoformat()
+        })
+        
+        return cart
+    
+    async def get_cart(self, cart_id: UUID) -> Optional[Cart]:
+        """
+        Retrieve cart by ID with cache-aside pattern.
+        
+        Args:
+            cart_id: Cart identifier
+            
+        Returns:
+            Cart object if found, None otherwise
+        """
+        # Try cache first
+        cached_cart = await self.cache.get(f"cart:{cart_id}")
+        if cached_cart:
+            return Cart(**cached_cart)
+        
+        # Fallback to database
+        cart = await self.db.get_cart(cart_id)
+        if cart:
+            # Populate cache
+            await self.cache.set(
+                f"cart:{cart_id}",
+                cart.dict(),
+                ttl=self.cart_ttl
+            )
+        
+        return cart
+    
+    async def add_item(self, cart_id: UUID, product_id: UUID, quantity: int) -> CartItem:
+        """
+        Add item to cart with inventory validation.
+        
+        Args:
+            cart_id: Cart identifier
+            product_id: Product identifier
+            quantity: Quantity to add
+            
+        Returns:
+            CartItem: Added cart item
+            
+        Raises:
+            CartNotFoundError: If cart doesn't exist
+            ProductOutOfStockError: If insufficient inventory
+            InvalidQuantityError: If quantity is invalid
+        """
+        # Validate cart exists
+        cart = await self.get_cart(cart_id)
+        if not cart:
+            raise CartNotFoundError(f"Cart {cart_id} not found")
+        
+        # Validate quantity
+        if quantity <= 0:
+            raise InvalidQuantityError("Quantity must be positive")
+        
+        # Check inventory
+        available = await self._check_inventory(product_id)
+        if available < quantity:
+            raise ProductOutOfStockError(
+                f"Only {available} units available for product {product_id}"
+            )
+        
+        # Get product price
+        price = await self._get_product_price(product_id)
+        
+        # Check if item already exists in cart
+        existing_item = await self.db.get_cart_item(cart_id, product_id)
+        
+        if existing_item:
+            # Update quantity
+            new_quantity = existing_item.quantity + quantity
+            item = await self.update_item_quantity(
+                cart_id,
+                existing_item.item_id,
+                new_quantity
+            )
+        else:
+            # Create new item
+            item_data = {
+                'cart_id': cart_id,
+                'product_id': product_id,
+                'quantity': quantity,
+                'unit_price': price,
+                'subtotal': price * quantity
             }
-        };
+            item = await self.db.create_cart_item(item_data)
+        
+        # Invalidate cart cache
+        await self.cache.delete(f"cart:{cart_id}")
+        
+        # Publish item added event
+        await self.event_bus.publish('cart.item_added', {
+            'cart_id': str(cart_id),
+            'product_id': str(product_id),
+            'quantity': quantity,
+            'timestamp': item.added_at.isoformat()
+        })
+        
+        return item
+    
+    async def update_item_quantity(
+        self,
+        cart_id: UUID,
+        item_id: UUID,
+        quantity: int
+    ) -> CartItem:
+        """
+        Update quantity of an existing cart item.
+        
+        Args:
+            cart_id: Cart identifier
+            item_id: Cart item identifier
+            quantity: New quantity
+            
+        Returns:
+            CartItem: Updated cart item
+            
+        Raises:
+            ItemNotFoundError: If item doesn't exist
+            InvalidQuantityError: If quantity is invalid
+            ProductOutOfStockError: If insufficient inventory
+        """
+        # Validate quantity
+        if quantity <= 0:
+            raise InvalidQuantityError("Quantity must be positive")
+        
+        # Get existing item
+        item = await self.db.get_cart_item_by_id(item_id)
+        if not item or item.cart_id != cart_id:
+            raise ItemNotFoundError(f"Item {item_id} not found in cart {cart_id}")
+        
+        # Check inventory
+        available = await self._check_inventory(item.product_id)
+        if available < quantity:
+            raise ProductOutOfStockError(
+                f"Only {available} units available"
+            )
+        
+        # Update item
+        item.quantity = quantity
+        item.subtotal = item.unit_price * quantity
+        updated_item = await self.db.update_cart_item(item)
+        
+        # Invalidate cart cache
+        await self.cache.delete(f"cart:{cart_id}")
+        
+        # Publish item updated event
+        await self.event_bus.publish('cart.item_updated', {
+            'cart_id': str(cart_id),
+            'item_id': str(item_id),
+            'quantity': quantity,
+            'timestamp': updated_item.updated_at.isoformat()
+        })
+        
+        return updated_item
+    
+    async def remove_item(self, cart_id: UUID, item_id: UUID) -> None:
+        """
+        Remove item from cart.
+        
+        Args:
+            cart_id: Cart identifier
+            item_id: Cart item identifier
+            
+        Raises:
+            ItemNotFoundError: If item doesn't exist
+        """
+        # Verify item exists and belongs to cart
+        item = await self.db.get_cart_item_by_id(item_id)
+        if not item or item.cart_id != cart_id:
+            raise ItemNotFoundError(f"Item {item_id} not found in cart {cart_id}")
+        
+        # Delete item
+        await self.db.delete_cart_item(item_id)
+        
+        # Invalidate cart cache
+        await self.cache.delete(f"cart:{cart_id}")
+        
+        # Publish item removed event
+        await self.event_bus.publish('cart.item_removed', {
+            'cart_id': str(cart_id),
+            'item_id': str(item_id),
+            'product_id': str(item.product_id),
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    
+    async def clear_cart(self, cart_id: UUID) -> None:
+        """
+        Remove all items from cart.
+        
+        Args:
+            cart_id: Cart identifier
+        """
+        await self.db.delete_all_cart_items(cart_id)
+        await self.cache.delete(f"cart:{cart_id}")
+        
+        await self.event_bus.publish('cart.cleared', {
+            'cart_id': str(cart_id),
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    
+    async def _check_inventory(self, product_id: UUID) -> int:
+        """
+        Check product inventory availability.
+        
+        Args:
+            product_id: Product identifier
+            
+        Returns:
+            int: Available quantity
+        """
+        # Try cache first
+        cached_inventory = await self.cache.get(f"product:inventory:{product_id}")
+        if cached_inventory is not None:
+            return int(cached_inventory)
+        
+        # Call inventory service
+        inventory = await self.inventory_service.get_available_quantity(product_id)
+        
+        # Cache for 5 minutes
+        await self.cache.set(
+            f"product:inventory:{product_id}",
+            inventory,
+            ttl=300
+        )
+        
+        return inventory
+    
+    async def _get_product_price(self, product_id: UUID) -> Decimal:
+        """
+        Get current product price.
+        
+        Args:
+            product_id: Product identifier
+            
+        Returns:
+            Decimal: Product price
+        """
+        # Try cache first
+        cached_price = await self.cache.get(f"product:price:{product_id}")
+        if cached_price is not None:
+            return Decimal(cached_price)
+        
+        # Call pricing service
+        price = await self.pricing_service.get_price(product_id)
+        
+        # Cache for 1 hour
+        await self.cache.set(
+            f"product:price:{product_id}",
+            str(price),
+            ttl=3600
+        )
+        
+        return price
+```
 
-        // Log error
-        logger.error('Error occurred', {
-            error: errorResponse,
-            stack: error.stack,
-            request: {
-                method: req.method,
-                url: req.url,
-                headers: req.headers,
-                body: req.body
+### 6.2 Price Engine
+
+```python
+from decimal import Decimal
+from typing import List, Optional
+from uuid import UUID
+
+class PriceEngine:
+    """
+    Component responsible for price calculations and discount application.
+    """
+    
+    def __init__(self, db_service, discount_service):
+        self.db = db_service
+        self.discount_service = discount_service
+    
+    async def calculate_cart_total(self, cart_id: UUID) -> Decimal:
+        """
+        Calculate total cart amount including all discounts.
+        
+        Args:
+            cart_id: Cart identifier
+            
+        Returns:
+            Decimal: Total cart amount
+        """
+        # Get cart items
+        items = await self.db.get_cart_items(cart_id)
+        
+        # Calculate items subtotal
+        items_total = sum(item.subtotal for item in items)
+        
+        # Get applied discounts
+        discounts = await self.db.get_cart_discounts(cart_id)
+        
+        # Calculate discount total
+        discount_total = Decimal('0.00')
+        for discount in discounts:
+            if discount.discount_type == 'percentage':
+                discount_total += items_total * (discount.discount_value / 100)
+            elif discount.discount_type == 'fixed':
+                discount_total += discount.discount_value
+        
+        # Calculate final total
+        total = max(items_total - discount_total, Decimal('0.00'))
+        
+        # Update cart total
+        await self.db.update_cart_total(cart_id, total)
+        
+        return total
+    
+    async def apply_coupon(
+        self,
+        cart_id: UUID,
+        coupon_code: str
+    ) -> CartDiscount:
+        """
+        Apply coupon code to cart.
+        
+        Args:
+            cart_id: Cart identifier
+            coupon_code: Coupon code to apply
+            
+        Returns:
+            CartDiscount: Applied discount details
+            
+        Raises:
+            InvalidCouponError: If coupon is invalid or expired
+        """
+        # Validate coupon
+        coupon = await self.discount_service.validate_coupon(coupon_code)
+        if not coupon:
+            raise InvalidCouponError(f"Invalid coupon code: {coupon_code}")
+        
+        # Check if coupon already applied
+        existing = await self.db.get_cart_discount_by_coupon(cart_id, coupon_code)
+        if existing:
+            raise InvalidCouponError("Coupon already applied")
+        
+        # Calculate discount amount
+        cart_total = await self.calculate_cart_total(cart_id)
+        
+        if coupon.discount_type == 'percentage':
+            discount_value = cart_total * (coupon.discount_percentage / 100)
+        else:
+            discount_value = coupon.discount_amount
+        
+        # Create discount record
+        discount_data = {
+            'cart_id': cart_id,
+            'coupon_code': coupon_code,
+            'discount_type': coupon.discount_type,
+            'discount_value': discount_value
+        }
+        discount = await self.db.create_cart_discount(discount_data)
+        
+        # Recalculate cart total
+        await self.calculate_cart_total(cart_id)
+        
+        return discount
+    
+    async def remove_discount(
+        self,
+        cart_id: UUID,
+        discount_id: UUID
+    ) -> None:
+        """
+        Remove discount from cart.
+        
+        Args:
+            cart_id: Cart identifier
+            discount_id: Discount identifier
+        """
+        await self.db.delete_cart_discount(discount_id)
+        await self.calculate_cart_total(cart_id)
+```
+
+### 6.3 Cart Validator
+
+```python
+from typing import List
+from uuid import UUID
+
+class CartValidator:
+    """
+    Component responsible for cart validation and business rules.
+    """
+    
+    def __init__(self, db_service, inventory_service):
+        self.db = db_service
+        self.inventory_service = inventory_service
+        self.max_items_per_cart = 100
+        self.max_quantity_per_item = 99
+    
+    async def validate_cart(self, cart_id: UUID) -> dict:
+        """
+        Validate entire cart for checkout readiness.
+        
+        Args:
+            cart_id: Cart identifier
+            
+        Returns:
+            dict: Validation result with errors if any
+        """
+        errors = []
+        warnings = []
+        
+        # Get cart and items
+        cart = await self.db.get_cart(cart_id)
+        if not cart:
+            return {
+                'valid': False,
+                'errors': ['Cart not found'],
+                'warnings': []
             }
-        });
+        
+        items = await self.db.get_cart_items(cart_id)
+        
+        # Check if cart is empty
+        if not items:
+            errors.append('Cart is empty')
+        
+        # Check max items limit
+        if len(items) > self.max_items_per_cart:
+            errors.append(f'Cart exceeds maximum of {self.max_items_per_cart} items')
+        
+        # Validate each item
+        for item in items:
+            # Check quantity limits
+            if item.quantity > self.max_quantity_per_item:
+                errors.append(
+                    f'Item {item.product_id} exceeds maximum quantity of {self.max_quantity_per_item}'
+                )
+            
+            # Check inventory availability
+            available = await self.inventory_service.get_available_quantity(
+                item.product_id
+            )
+            if available < item.quantity:
+                errors.append(
+                    f'Insufficient inventory for product {item.product_id}. '
+                    f'Available: {available}, Requested: {item.quantity}'
+                )
+            elif available < item.quantity * 1.5:
+                warnings.append(
+                    f'Low inventory for product {item.product_id}'
+                )
+            
+            # Validate product is still active
+            product = await self.db.get_product(item.product_id)
+            if not product or not product.is_active:
+                errors.append(
+                    f'Product {item.product_id} is no longer available'
+                )
+            
+            # Check price changes
+            current_price = await self.pricing_service.get_price(item.product_id)
+            if current_price != item.unit_price:
+                warnings.append(
+                    f'Price changed for product {item.product_id}. '
+                    f'Old: {item.unit_price}, New: {current_price}'
+                )
+        
+        return {
+            'valid': len(errors) == 0,
+            'errors': errors,
+            'warnings': warnings
+        }
+    
+    async def validate_item_addition(
+        self,
+        cart_id: UUID,
+        product_id: UUID,
+        quantity: int
+    ) -> dict:
+        """
+        Validate if item can be added to cart.
+        
+        Args:
+            cart_id: Cart identifier
+            product_id: Product identifier
+            quantity: Quantity to add
+            
+        Returns:
+            dict: Validation result
+        """
+        errors = []
+        
+        # Check quantity
+        if quantity <= 0:
+            errors.append('Quantity must be positive')
+        elif quantity > self.max_quantity_per_item:
+            errors.append(f'Quantity exceeds maximum of {self.max_quantity_per_item}')
+        
+        # Check product exists and is active
+        product = await self.db.get_product(product_id)
+        if not product:
+            errors.append('Product not found')
+        elif not product.is_active:
+            errors.append('Product is not available')
+        
+        # Check inventory
+        if product:
+            available = await self.inventory_service.get_available_quantity(product_id)
+            if available < quantity:
+                errors.append(
+                    f'Insufficient inventory. Available: {available}'
+                )
+        
+        # Check cart item count
+        items = await self.db.get_cart_items(cart_id)
+        if len(items) >= self.max_items_per_cart:
+            errors.append(f'Cart has reached maximum of {self.max_items_per_cart} items')
+        
+        return {
+            'valid': len(errors) == 0,
+            'errors': errors
+        }
+```
 
-        // Send response
-        const statusCode = error.statusCode || 500;
-        res.status(statusCode).json(errorResponse);
-    }
+---
 
-    static createError(code, message, statusCode, details = {}) {
-        const error = new Error(message);
-        error.code = code;
-        error.statusCode = statusCode;
-        error.details = details;
-        return error;
-    }
-}
+## 7. Integration Points
 
-// Usage
-throw ErrorHandler.createError(
-    'INSUFFICIENT_STOCK',
-    'Requested quantity exceeds available stock',
-    409,
-    { productId: 'prod_001', requestedQuantity: 10, availableStock: 5 }
-);
+### 7.1 External Services
+
+#### 7.1.1 Inventory Service
+```python
+class InventoryServiceClient:
+    """
+    Client for inventory service integration.
+    """
+    
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url
+        self.api_key = api_key
+        self.timeout = 5  # seconds
+    
+    async def get_available_quantity(self, product_id: UUID) -> int:
+        """
+        Get available inventory for a product.
+        
+        Args:
+            product_id: Product identifier
+            
+        Returns:
+            int: Available quantity
+        """
+        url = f"{self.base_url}/api/v1/inventory/{product_id}"
+        headers = {'X-API-Key': self.api_key}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+                headers=headers,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data['available_quantity']
+    
+    async def reserve_inventory(
+        self,
+        product_id: UUID,
+        quantity: int,
+        reservation_id: UUID
+    ) -> bool:
+        """
+        Reserve inventory for checkout.
+        
+        Args:
+            product_id: Product identifier
+            quantity: Quantity to reserve
+            reservation_id: Unique reservation identifier
+            
+        Returns:
+            bool: True if reservation successful
+        """
+        url = f"{self.base_url}/api/v1/inventory/reserve"
+        headers = {'X-API-Key': self.api_key}
+        payload = {
+            'product_id': str(product_id),
+            'quantity': quantity,
+            'reservation_id': str(reservation_id)
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout
+            )
+            return response.status_code == 200
+```
+
+#### 7.1.2 Pricing Service
+```python
+class PricingServiceClient:
+    """
+    Client for pricing service integration.
+    """
+    
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url
+        self.api_key = api_key
+        self.timeout = 5
+    
+    async def get_price(self, product_id: UUID) -> Decimal:
+        """
+        Get current price for a product.
+        
+        Args:
+            product_id: Product identifier
+            
+        Returns:
+            Decimal: Product price
+        """
+        url = f"{self.base_url}/api/v1/pricing/{product_id}"
+        headers = {'X-API-Key': self.api_key}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+                headers=headers,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            return Decimal(str(data['price']))
+    
+    async def get_bulk_prices(
+        self,
+        product_ids: List[UUID]
+    ) -> dict[UUID, Decimal]:
+        """
+        Get prices for multiple products.
+        
+        Args:
+            product_ids: List of product identifiers
+            
+        Returns:
+            dict: Mapping of product_id to price
+        """
+        url = f"{self.base_url}/api/v1/pricing/bulk"
+        headers = {'X-API-Key': self.api_key}
+        payload = {'product_ids': [str(pid) for pid in product_ids]}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            return {
+                UUID(pid): Decimal(str(price))
+                for pid, price in data['prices'].items()
+            }
+```
+
+### 7.2 Event Publishing
+
+```python
+from typing import Dict, Any
+import json
+
+class EventBus:
+    """
+    Event bus for publishing cart events to message queue.
+    """
+    
+    def __init__(self, rabbitmq_connection):
+        self.connection = rabbitmq_connection
+        self.exchange = 'cart_events'
+    
+    async def publish(self, event_type: str, payload: Dict[str, Any]) -> None:
+        """
+        Publish event to message queue.
+        
+        Args:
+            event_type: Type of event (e.g., 'cart.created')
+            payload: Event payload
+        """
+        message = {
+            'event_type': event_type,
+            'payload': payload,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        await self.connection.publish(
+            exchange=self.exchange,
+            routing_key=event_type,
+            body=json.dumps(message)
+        )
+
+# Event types
+EVENT_TYPES = [
+    'cart.created',
+    'cart.updated',
+    'cart.cleared',
+    'cart.abandoned',
+    'cart.converted',
+    'cart.item_added',
+    'cart.item_removed',
+    'cart.item_updated',
+    'cart.discount_applied',
+    'cart.discount_removed'
+]
+```
+
+---
+
+## 8. Performance Optimization
+
+### 8.1 Caching Strategy
+
+```python
+class CacheStrategy:
+    """
+    Implements multi-level caching for cart operations.
+    """
+    
+    # Cache TTLs (in seconds)
+    CART_TTL = 86400  # 24 hours
+    PRODUCT_PRICE_TTL = 3600  # 1 hour
+    PRODUCT_INVENTORY_TTL = 300  # 5 minutes
+    USER_CART_MAPPING_TTL = 86400  # 24 hours
+    
+    # Cache key patterns
+    CART_KEY = "cart:{cart_id}"
+    USER_CART_KEY = "cart:user:{user_id}"
+    SESSION_CART_KEY = "cart:session:{session_id}"
+    PRODUCT_PRICE_KEY = "product:price:{product_id}"
+    PRODUCT_INVENTORY_KEY = "product:inventory:{product_id}"
+    
+    @staticmethod
+    def get_cart_key(cart_id: UUID) -> str:
+        return f"cart:{cart_id}"
+    
+    @staticmethod
+    def get_user_cart_key(user_id: UUID) -> str:
+        return f"cart:user:{user_id}"
+    
+    @staticmethod
+    async def invalidate_cart_cache(cache_service, cart_id: UUID) -> None:
+        """
+        Invalidate all cache entries related to a cart.
+        """
+        keys_to_delete = [
+            f"cart:{cart_id}",
+            f"cart:items:{cart_id}"
+        ]
+        await cache_service.delete_many(keys_to_delete)
+```
+
+### 8.2 Database Optimization
+
+```sql
+-- Indexes for performance
+CREATE INDEX CONCURRENTLY idx_carts_user_status 
+    ON carts(user_id, status) 
+    WHERE status = 'active';
+
+CREATE INDEX CONCURRENTLY idx_carts_expires_at 
+    ON carts(expires_at) 
+    WHERE expires_at IS NOT NULL;
+
+CREATE INDEX CONCURRENTLY idx_cart_items_cart_product 
+    ON cart_items(cart_id, product_id);
+
+CREATE INDEX CONCURRENTLY idx_cart_items_updated_at 
+    ON cart_items(updated_at DESC);
+
+-- Partitioning for cart_items (by month)
+CREATE TABLE cart_items_y2024m01 PARTITION OF cart_items
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+
+CREATE TABLE cart_items_y2024m02 PARTITION OF cart_items
+    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');
+
+-- Materialized view for cart analytics
+CREATE MATERIALIZED VIEW cart_analytics AS
+SELECT 
+    DATE(created_at) as date,
+    COUNT(*) as total_carts,
+    COUNT(*) FILTER (WHERE status = 'converted') as converted_carts,
+    COUNT(*) FILTER (WHERE status = 'abandoned') as abandoned_carts,
+    AVG(total_amount) as avg_cart_value
+FROM carts
+GROUP BY DATE(created_at);
+
+CREATE UNIQUE INDEX ON cart_analytics(date);
+```
+
+### 8.3 Query Optimization
+
+```python
+class OptimizedQueries:
+    """
+    Optimized database queries for cart operations.
+    """
+    
+    @staticmethod
+    async def get_cart_with_items(db, cart_id: UUID) -> Optional[Cart]:
+        """
+        Fetch cart with all items in a single query using JOIN.
+        """
+        query = """
+            SELECT 
+                c.*,
+                json_agg(
+                    json_build_object(
+                        'item_id', ci.item_id,
+                        'product_id', ci.product_id,
+                        'quantity', ci.quantity,
+                        'unit_price', ci.unit_price,
+                        'subtotal', ci.subtotal
+                    )
+                ) FILTER (WHERE ci.item_id IS NOT NULL) as items
+            FROM carts c
+            LEFT JOIN cart_items ci ON c.cart_id = ci.cart_id
+            WHERE c.cart_id = $1
+            GROUP BY c.cart_id
+        """
+        result = await db.fetchrow(query, cart_id)
+        return Cart(**result) if result else None
+    
+    @staticmethod
+    async def bulk_update_prices(db, price_updates: List[dict]) -> None:
+        """
+        Bulk update item prices using UNNEST.
+        """
+        query = """
+            UPDATE cart_items ci
+            SET 
+                unit_price = u.new_price,
+                subtotal = quantity * u.new_price,
+                updated_at = CURRENT_TIMESTAMP
+            FROM (
+                SELECT 
+                    UNNEST($1::uuid[]) as item_id,
+                    UNNEST($2::decimal[]) as new_price
+            ) u
+            WHERE ci.item_id = u.item_id
+        """
+        item_ids = [u['item_id'] for u in price_updates]
+        new_prices = [u['new_price'] for u in price_updates]
+        await db.execute(query, item_ids, new_prices)
 ```
 
 ---
@@ -1043,522 +1326,687 @@ throw ErrorHandler.createError(
 
 ### 9.1 Authentication & Authorization
 
-- All cart endpoints require valid JWT authentication
-- Users can only access their own carts
-- Session-based carts for guest users (pre-login)
-- Cart ownership validation on every request
+```python
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError, jwt
+
+security = HTTPBearer()
+
+class SecurityManager:
+    """
+    Handles authentication and authorization for cart operations.
+    """
+    
+    def __init__(self, secret_key: str, algorithm: str = "HS256"):
+        self.secret_key = secret_key
+        self.algorithm = algorithm
+    
+    async def verify_token(
+        self,
+        credentials: HTTPAuthorizationCredentials = Depends(security)
+    ) -> dict:
+        """
+        Verify JWT token and extract user information.
+        
+        Args:
+            credentials: HTTP authorization credentials
+            
+        Returns:
+            dict: Decoded token payload
+            
+        Raises:
+            HTTPException: If token is invalid
+        """
+        try:
+            payload = jwt.decode(
+                credentials.credentials,
+                self.secret_key,
+                algorithms=[self.algorithm]
+            )
+            return payload
+        except JWTError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials"
+            )
+    
+    async def verify_cart_ownership(
+        self,
+        cart_id: UUID,
+        user_id: UUID,
+        db_service
+    ) -> bool:
+        """
+        Verify that user owns the cart.
+        
+        Args:
+            cart_id: Cart identifier
+            user_id: User identifier
+            db_service: Database service
+            
+        Returns:
+            bool: True if user owns cart
+            
+        Raises:
+            HTTPException: If user doesn't own cart
+        """
+        cart = await db_service.get_cart(cart_id)
+        if not cart or cart.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this cart"
+            )
+        return True
+```
 
 ### 9.2 Input Validation
 
-```javascript
-const addToCartSchema = {
-    productId: {
-        type: 'string',
-        format: 'uuid',
-        required: true
-    },
-    variantId: {
-        type: 'string',
-        format: 'uuid',
-        required: false
-    },
-    quantity: {
-        type: 'integer',
-        minimum: 1,
-        maximum: 99,
-        required: false,
-        default: 1
-    }
-};
+```python
+from pydantic import BaseModel, Field, validator
+from typing import Optional
+from uuid import UUID
+
+class AddItemRequest(BaseModel):
+    """Request model for adding item to cart."""
+    
+    product_id: UUID = Field(..., description="Product identifier")
+    quantity: int = Field(..., gt=0, le=99, description="Quantity to add")
+    
+    @validator('quantity')
+    def validate_quantity(cls, v):
+        if v <= 0:
+            raise ValueError('Quantity must be positive')
+        if v > 99:
+            raise ValueError('Quantity cannot exceed 99')
+        return v
+
+class UpdateQuantityRequest(BaseModel):
+    """Request model for updating item quantity."""
+    
+    quantity: int = Field(..., gt=0, le=99)
+    
+    @validator('quantity')
+    def validate_quantity(cls, v):
+        if v <= 0:
+            raise ValueError('Quantity must be positive')
+        if v > 99:
+            raise ValueError('Quantity cannot exceed 99')
+        return v
+
+class ApplyCouponRequest(BaseModel):
+    """Request model for applying coupon."""
+    
+    coupon_code: str = Field(..., min_length=3, max_length=50)
+    
+    @validator('coupon_code')
+    def validate_coupon_code(cls, v):
+        # Only allow alphanumeric and hyphens
+        if not v.replace('-', '').isalnum():
+            raise ValueError('Invalid coupon code format')
+        return v.upper()
 ```
 
 ### 9.3 Rate Limiting
 
-```javascript
-const rateLimits = {
-    'POST /api/v1/cart/items': {
-        windowMs: 60000,      // 1 minute
-        maxRequests: 20       // 20 requests per minute
-    },
-    'PUT /api/v1/cart/items/:id': {
-        windowMs: 60000,
-        maxRequests: 30
-    },
-    'GET /api/v1/cart': {
-        windowMs: 60000,
-        maxRequests: 60
-    }
-};
-```
+```python
+from fastapi import Request
+from datetime import datetime, timedelta
+import asyncio
 
-### 9.4 Data Sanitization
-
-- Sanitize all user inputs
-- Prevent SQL injection via parameterized queries
-- Escape special characters in product names/descriptions
-- Validate UUID formats
-- Prevent XSS attacks in cart item metadata
-
----
-
-## 10. Performance Optimization
-
-### 10.1 Database Optimization
-
-**Indexes:**
-```sql
--- Composite index for cart item lookups
-CREATE INDEX idx_cart_items_lookup ON cart_items(cart_id, product_id, variant_id);
-
--- Index for cart expiration cleanup
-CREATE INDEX idx_carts_expires_at ON carts(expires_at) WHERE status = 'active';
-
--- Index for user cart queries
-CREATE INDEX idx_carts_user_status ON carts(user_id, status);
-```
-
-**Query Optimization:**
-- Use `EXPLAIN ANALYZE` for slow queries
-- Implement connection pooling (min: 10, max: 50)
-- Use read replicas for GET operations
-- Batch update operations where possible
-
-### 10.2 Caching Strategy
-
-- Cache complete cart data for 1 hour
-- Cache product prices for 5 minutes
-- Implement cache warming for popular products
-- Use Redis pipelining for bulk operations
-
-### 10.3 API Response Optimization
-
-- Implement pagination for large carts (page size: 20)
-- Use field filtering: `?fields=cartId,totalAmount,items`
-- Compress responses with gzip
-- Implement ETag for conditional requests
-
----
-
-## 11. Monitoring & Logging
-
-### 11.1 Metrics to Track
-
-| Metric | Description | Alert Threshold |
-|--------|-------------|------------------|
-| cart_add_latency | Time to add item to cart | > 500ms |
-| cart_get_latency | Time to retrieve cart | > 200ms |
-| cart_update_latency | Time to update cart item | > 300ms |
-| cart_error_rate | Percentage of failed requests | > 1% |
-| cache_hit_rate | Cache hit percentage | < 80% |
-| db_connection_pool | Active DB connections | > 40 |
-| abandoned_cart_rate | Carts not converted | > 70% |
-
-### 11.2 Logging Strategy
-
-```javascript
-const logger = winston.createLogger({
-    level: 'info',
-    format: winston.format.json(),
-    defaultMeta: { service: 'cart-service' },
-    transports: [
-        new winston.transports.File({ filename: 'error.log', level: 'error' }),
-        new winston.transports.File({ filename: 'combined.log' })
-    ]
-});
-
-// Log levels
-// ERROR: System errors, exceptions
-// WARN: Business rule violations, stock issues
-// INFO: Successful operations, state changes
-// DEBUG: Detailed execution flow
-
-// Example log entry
-logger.info('Item added to cart', {
-    userId: 'user_123',
-    cartId: 'cart_456',
-    productId: 'prod_789',
-    quantity: 2,
-    timestamp: new Date().toISOString(),
-    requestId: 'req_abc123'
-});
-```
-
-### 11.3 Health Checks
-
-```javascript
-// GET /health
-app.get('/health', async (req, res) => {
-    const health = {
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        checks: {
-            database: await checkDatabase(),
-            redis: await checkRedis(),
-            productService: await checkProductService(),
-            messageQueue: await checkMessageQueue()
+class RateLimiter:
+    """
+    Implements rate limiting for cart operations.
+    """
+    
+    def __init__(self, redis_client):
+        self.redis = redis_client
+        self.limits = {
+            'add_item': (10, 60),  # 10 requests per 60 seconds
+            'update_item': (20, 60),
+            'remove_item': (20, 60),
+            'get_cart': (100, 60)
         }
-    };
-
-    const isHealthy = Object.values(health.checks).every(check => check.status === 'up');
-    const statusCode = isHealthy ? 200 : 503;
     
-    res.status(statusCode).json(health);
-});
+    async def check_rate_limit(
+        self,
+        user_id: UUID,
+        operation: str,
+        request: Request
+    ) -> bool:
+        """
+        Check if request is within rate limit.
+        
+        Args:
+            user_id: User identifier
+            operation: Operation name
+            request: FastAPI request object
+            
+        Returns:
+            bool: True if within limit
+            
+        Raises:
+            HTTPException: If rate limit exceeded
+        """
+        if operation not in self.limits:
+            return True
+        
+        max_requests, window = self.limits[operation]
+        key = f"ratelimit:{user_id}:{operation}"
+        
+        # Increment counter
+        current = await self.redis.incr(key)
+        
+        if current == 1:
+            # Set expiry on first request
+            await self.redis.expire(key, window)
+        
+        if current > max_requests:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded for {operation}"
+            )
+        
+        return True
 ```
 
 ---
 
-## 12. Testing Strategy
+## 10. Error Handling
 
-### 12.1 Unit Tests
+### 10.1 Custom Exceptions
 
-```javascript
-describe('CartService', () => {
-    describe('addItemToCart', () => {
-        it('should add new item to cart', async () => {
-            const result = await cartService.addItemToCart(userId, productId, variantId, 2);
-            expect(result.quantity).toBe(2);
-            expect(result.subtotal).toBe(199.98);
-        });
+```python
+class CartException(Exception):
+    """Base exception for cart operations."""
+    pass
 
-        it('should increment quantity if item exists', async () => {
-            await cartService.addItemToCart(userId, productId, variantId, 2);
-            const result = await cartService.addItemToCart(userId, productId, variantId, 1);
-            expect(result.quantity).toBe(3);
-        });
+class CartNotFoundError(CartException):
+    """Raised when cart is not found."""
+    pass
 
-        it('should throw error if insufficient stock', async () => {
-            await expect(
-                cartService.addItemToCart(userId, productId, variantId, 100)
-            ).rejects.toThrow('INSUFFICIENT_STOCK');
-        });
-    });
-});
+class ItemNotFoundError(CartException):
+    """Raised when cart item is not found."""
+    pass
+
+class InvalidQuantityError(CartException):
+    """Raised when quantity is invalid."""
+    pass
+
+class ProductOutOfStockError(CartException):
+    """Raised when product is out of stock."""
+    pass
+
+class InvalidCouponError(CartException):
+    """Raised when coupon is invalid."""
+    pass
+
+class CartExpiredError(CartException):
+    """Raised when cart has expired."""
+    pass
 ```
 
-### 12.2 Integration Tests
+### 10.2 Error Handler
 
-```javascript
-describe('Cart API Integration', () => {
-    it('should complete full cart flow', async () => {
-        // Add item
-        const addResponse = await request(app)
-            .post('/api/v1/cart/items')
-            .set('Authorization', `Bearer ${token}`)
-            .send({ productId: 'prod_001', quantity: 2 })
-            .expect(201);
+```python
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import logging
 
-        // Get cart
-        const getResponse = await request(app)
-            .get('/api/v1/cart')
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
+logger = logging.getLogger(__name__)
 
-        expect(getResponse.body.data.totalItems).toBe(2);
-
-        // Update quantity
-        await request(app)
-            .put(`/api/v1/cart/items/${addResponse.body.data.cartItemId}`)
-            .set('Authorization', `Bearer ${token}`)
-            .send({ quantity: 5 })
-            .expect(200);
-
-        // Remove item
-        await request(app)
-            .delete(`/api/v1/cart/items/${addResponse.body.data.cartItemId}`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-    });
-});
-```
-
-### 12.3 Load Testing
-
-```javascript
-// k6 load test script
-import http from 'k6/http';
-import { check, sleep } from 'k6';
-
-export let options = {
-    stages: [
-        { duration: '2m', target: 100 },  // Ramp up to 100 users
-        { duration: '5m', target: 100 },  // Stay at 100 users
-        { duration: '2m', target: 0 },    // Ramp down
-    ],
-    thresholds: {
-        http_req_duration: ['p(95)<500'],  // 95% of requests under 500ms
-        http_req_failed: ['rate<0.01'],    // Error rate under 1%
-    },
-};
-
-export default function () {
-    const token = 'test_token';
+def register_error_handlers(app: FastAPI):
+    """
+    Register global error handlers for the application.
+    """
     
-    // Add to cart
-    let response = http.post(
-        'http://api.example.com/api/v1/cart/items',
-        JSON.stringify({ productId: 'prod_001', quantity: 2 }),
-        { headers: { 'Authorization': `Bearer ${token}` } }
-    );
-    check(response, { 'add to cart success': (r) => r.status === 201 });
+    @app.exception_handler(CartNotFoundError)
+    async def cart_not_found_handler(request: Request, exc: CartNotFoundError):
+        logger.warning(f"Cart not found: {exc}")
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "code": "CART_NOT_FOUND",
+                    "message": str(exc),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            }
+        )
     
-    sleep(1);
+    @app.exception_handler(ProductOutOfStockError)
+    async def out_of_stock_handler(request: Request, exc: ProductOutOfStockError):
+        logger.warning(f"Product out of stock: {exc}")
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": "PRODUCT_OUT_OF_STOCK",
+                    "message": str(exc),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            }
+        )
     
-    // Get cart
-    response = http.get(
-        'http://api.example.com/api/v1/cart',
-        { headers: { 'Authorization': `Bearer ${token}` } }
-    );
-    check(response, { 'get cart success': (r) => r.status === 200 });
+    @app.exception_handler(InvalidCouponError)
+    async def invalid_coupon_handler(request: Request, exc: InvalidCouponError):
+        logger.warning(f"Invalid coupon: {exc}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": "INVALID_COUPON",
+                    "message": str(exc),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            }
+        )
     
-    sleep(1);
-}
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "An internal error occurred",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            }
+        )
 ```
 
 ---
 
-## 13. Deployment
+## 11. Testing Strategy
 
-### 13.1 Environment Configuration
+### 11.1 Unit Tests
 
-```yaml
-# config/production.yaml
-server:
-  port: 3000
-  host: 0.0.0.0
+```python
+import pytest
+from unittest.mock import Mock, AsyncMock
+from uuid import uuid4
+from decimal import Decimal
 
-database:
-  host: ${DB_HOST}
-  port: 5432
-  name: ${DB_NAME}
-  user: ${DB_USER}
-  password: ${DB_PASSWORD}
-  pool:
-    min: 10
-    max: 50
-
-redis:
-  host: ${REDIS_HOST}
-  port: 6379
-  password: ${REDIS_PASSWORD}
-  db: 0
-
-services:
-  productService:
-    baseUrl: ${PRODUCT_SERVICE_URL}
-    timeout: 5000
-  userService:
-    baseUrl: ${USER_SERVICE_URL}
-    timeout: 3000
-  pricingService:
-    baseUrl: ${PRICING_SERVICE_URL}
-    timeout: 5000
-
-queue:
-  host: ${RABBITMQ_HOST}
-  port: 5672
-  user: ${RABBITMQ_USER}
-  password: ${RABBITMQ_PASSWORD}
-
-logging:
-  level: info
-  format: json
+@pytest.mark.asyncio
+class TestCartManager:
+    """Unit tests for CartManager component."""
+    
+    async def test_create_cart_success(self):
+        """Test successful cart creation."""
+        # Arrange
+        user_id = uuid4()
+        mock_db = AsyncMock()
+        mock_cache = AsyncMock()
+        mock_event_bus = AsyncMock()
+        
+        cart_manager = CartManager(mock_db, mock_cache, mock_event_bus)
+        
+        expected_cart = Cart(
+            cart_id=uuid4(),
+            user_id=user_id,
+            status='active',
+            items=[],
+            total_amount=Decimal('0.00')
+        )
+        mock_db.create_cart.return_value = expected_cart
+        
+        # Act
+        result = await cart_manager.create_cart(user_id)
+        
+        # Assert
+        assert result.user_id == user_id
+        assert result.status == 'active'
+        mock_db.create_cart.assert_called_once()
+        mock_cache.set.assert_called()
+        mock_event_bus.publish.assert_called_with(
+            'cart.created',
+            {'cart_id': str(result.cart_id), 'user_id': str(user_id)}
+        )
+    
+    async def test_add_item_success(self):
+        """Test successful item addition to cart."""
+        # Arrange
+        cart_id = uuid4()
+        product_id = uuid4()
+        quantity = 2
+        
+        mock_db = AsyncMock()
+        mock_cache = AsyncMock()
+        mock_event_bus = AsyncMock()
+        
+        cart_manager = CartManager(mock_db, mock_cache, mock_event_bus)
+        cart_manager._check_inventory = AsyncMock(return_value=10)
+        cart_manager._get_product_price = AsyncMock(return_value=Decimal('29.99'))
+        
+        mock_cart = Cart(
+            cart_id=cart_id,
+            user_id=uuid4(),
+            status='active',
+            items=[],
+            total_amount=Decimal('0.00')
+        )
+        mock_db.get_cart.return_value = mock_cart
+        mock_db.get_cart_item.return_value = None
+        
+        expected_item = CartItem(
+            item_id=uuid4(),
+            product_id=product_id,
+            quantity=quantity,
+            unit_price=Decimal('29.99'),
+            subtotal=Decimal('59.98')
+        )
+        mock_db.create_cart_item.return_value = expected_item
+        
+        # Act
+        result = await cart_manager.add_item(cart_id, product_id, quantity)
+        
+        # Assert
+        assert result.product_id == product_id
+        assert result.quantity == quantity
+        assert result.subtotal == Decimal('59.98')
+        mock_db.create_cart_item.assert_called_once()
+    
+    async def test_add_item_out_of_stock(self):
+        """Test adding item when out of stock."""
+        # Arrange
+        cart_id = uuid4()
+        product_id = uuid4()
+        quantity = 10
+        
+        mock_db = AsyncMock()
+        mock_cache = AsyncMock()
+        mock_event_bus = AsyncMock()
+        
+        cart_manager = CartManager(mock_db, mock_cache, mock_event_bus)
+        cart_manager._check_inventory = AsyncMock(return_value=5)  # Only 5 available
+        
+        mock_cart = Cart(
+            cart_id=cart_id,
+            user_id=uuid4(),
+            status='active',
+            items=[],
+            total_amount=Decimal('0.00')
+        )
+        mock_db.get_cart.return_value = mock_cart
+        
+        # Act & Assert
+        with pytest.raises(ProductOutOfStockError):
+            await cart_manager.add_item(cart_id, product_id, quantity)
 ```
 
-### 13.2 Docker Configuration
+### 11.2 Integration Tests
+
+```python
+import pytest
+from httpx import AsyncClient
+from uuid import uuid4
+
+@pytest.mark.asyncio
+class TestCartAPI:
+    """Integration tests for Cart API endpoints."""
+    
+    async def test_create_and_get_cart(self, client: AsyncClient, auth_token: str):
+        """Test cart creation and retrieval flow."""
+        # Create cart
+        response = await client.post(
+            "/api/v1/cart",
+            headers={"Authorization": f"Bearer {auth_token}"},
+            json={"user_id": str(uuid4())}
+        )
+        assert response.status_code == 201
+        cart_data = response.json()
+        cart_id = cart_data['cart_id']
+        
+        # Get cart
+        response = await client.get(
+            f"/api/v1/cart/{cart_id}",
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
+        assert response.status_code == 200
+        assert response.json()['cart_id'] == cart_id
+    
+    async def test_add_item_to_cart(self, client: AsyncClient, auth_token: str):
+        """Test adding item to cart."""
+        # Create cart first
+        cart_response = await client.post(
+            "/api/v1/cart",
+            headers={"Authorization": f"Bearer {auth_token}"},
+            json={"user_id": str(uuid4())}
+        )
+        cart_id = cart_response.json()['cart_id']
+        
+        # Add item
+        response = await client.post(
+            f"/api/v1/cart/{cart_id}/items",
+            headers={"Authorization": f"Bearer {auth_token}"},
+            json={
+                "product_id": str(uuid4()),
+                "quantity": 2
+            }
+        )
+        assert response.status_code == 201
+        item_data = response.json()
+        assert item_data['quantity'] == 2
+```
+
+---
+
+## 12. Deployment
+
+### 12.1 Docker Configuration
 
 ```dockerfile
 # Dockerfile
-FROM node:18-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY . .
 
-EXPOSE 3000
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
-USER node
+# Expose port
+EXPOSE 8000
 
-CMD ["node", "src/index.js"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+
+# Run application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
+### 12.2 Kubernetes Deployment
+
 ```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  cart-service:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-    depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-
-  postgres:
-    image: postgres:14-alpine
-    environment:
-      - POSTGRES_DB=cart_db
-      - POSTGRES_USER=cart_user
-      - POSTGRES_PASSWORD=secure_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --requirepass secure_password
-    volumes:
-      - redis_data:/data
-
-  rabbitmq:
-    image: rabbitmq:3.11-management-alpine
-    environment:
-      - RABBITMQ_DEFAULT_USER=cart_user
-      - RABBITMQ_DEFAULT_PASS=secure_password
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-
-volumes:
-  postgres_data:
-  redis_data:
-  rabbitmq_data:
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-service
+  namespace: ecommerce
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cart-service
+  template:
+    metadata:
+      labels:
+        app: cart-service
+    spec:
+      containers:
+      - name: cart-service
+        image: cart-service:1.4
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: cart-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: cart-secrets
+              key: redis-url
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-service
+  namespace: ecommerce
+spec:
+  selector:
+    app: cart-service
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: ClusterIP
 ```
 
 ---
 
-## 14. Appendix
+## 13. Monitoring & Logging
 
-### 14.1 Database Migration Scripts
+### 13.1 Metrics
 
-```sql
--- V1__initial_schema.sql
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+```python
+from prometheus_client import Counter, Histogram, Gauge
 
-CREATE TABLE carts (
-    cart_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,
-    session_id VARCHAR(255),
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP,
-    total_amount DECIMAL(10,2) DEFAULT 0.00,
-    total_items INTEGER DEFAULT 0,
-    currency VARCHAR(3) DEFAULT 'USD'
-);
+# Define metrics
+cart_operations = Counter(
+    'cart_operations_total',
+    'Total cart operations',
+    ['operation', 'status']
+)
 
-CREATE TABLE cart_items (
-    cart_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    cart_id UUID NOT NULL,
-    product_id UUID NOT NULL,
-    variant_id UUID,
-    quantity INTEGER NOT NULL DEFAULT 1,
-    unit_price DECIMAL(10,2) NOT NULL,
-    subtotal DECIMAL(10,2) NOT NULL,
-    discount_amount DECIMAL(10,2) DEFAULT 0.00,
-    tax_amount DECIMAL(10,2) DEFAULT 0.00,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+cart_operation_duration = Histogram(
+    'cart_operation_duration_seconds',
+    'Cart operation duration',
+    ['operation']
+)
+
+active_carts = Gauge(
+    'active_carts_total',
+    'Number of active carts'
+)
+
+cart_value = Histogram(
+    'cart_value_dollars',
+    'Cart value distribution'
+)
+
+# Usage in code
+async def add_item_with_metrics(cart_id, product_id, quantity):
+    with cart_operation_duration.labels(operation='add_item').time():
+        try:
+            result = await cart_manager.add_item(cart_id, product_id, quantity)
+            cart_operations.labels(operation='add_item', status='success').inc()
+            return result
+        except Exception as e:
+            cart_operations.labels(operation='add_item', status='error').inc()
+            raise
+```
+
+### 13.2 Logging Configuration
+
+```python
+import logging
+import json
+from datetime import datetime
+
+class JSONFormatter(logging.Formatter):
+    """Custom JSON formatter for structured logging."""
     
-    CONSTRAINT fk_cart FOREIGN KEY (cart_id) REFERENCES carts(cart_id) ON DELETE CASCADE
-);
+    def format(self, record):
+        log_data = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+            'module': record.module,
+            'function': record.funcName,
+            'line': record.lineno
+        }
+        
+        if hasattr(record, 'cart_id'):
+            log_data['cart_id'] = record.cart_id
+        if hasattr(record, 'user_id'):
+            log_data['user_id'] = record.user_id
+        
+        if record.exc_info:
+            log_data['exception'] = self.formatException(record.exc_info)
+        
+        return json.dumps(log_data)
 
-CREATE INDEX idx_carts_user_id ON carts(user_id);
-CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
-CREATE UNIQUE INDEX idx_cart_items_unique ON cart_items(cart_id, product_id, variant_id);
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
+for handler in logging.root.handlers:
+    handler.setFormatter(JSONFormatter())
+
+logger = logging.getLogger(__name__)
 ```
 
-### 14.2 API Client Examples
+---
 
-```javascript
-// JavaScript/Node.js Client
-const axios = require('axios');
+## 14. Appendices
 
-class CartClient {
-    constructor(baseUrl, token) {
-        this.client = axios.create({
-            baseURL: baseUrl,
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-    }
-
-    async getCart() {
-        const response = await this.client.get('/api/v1/cart');
-        return response.data;
-    }
-
-    async addItem(productId, variantId, quantity) {
-        const response = await this.client.post('/api/v1/cart/items', {
-            productId,
-            variantId,
-            quantity
-        });
-        return response.data;
-    }
-
-    async updateItemQuantity(cartItemId, quantity) {
-        const response = await this.client.put(`/api/v1/cart/items/${cartItemId}`, {
-            quantity
-        });
-        return response.data;
-    }
-
-    async removeItem(cartItemId) {
-        const response = await this.client.delete(`/api/v1/cart/items/${cartItemId}`);
-        return response.data;
-    }
-}
-
-// Usage
-const cartClient = new CartClient('https://api.example.com', 'user_token');
-const cart = await cartClient.getCart();
-console.log(cart);
-```
-
-### 14.3 Glossary
+### 14.1 Glossary
 
 | Term | Definition |
 |------|------------|
-| Cart | A temporary collection of products a user intends to purchase |
-| Cart Item | A single product entry in a cart with quantity and price |
-| Session Cart | A cart associated with an anonymous session before user login |
-| User Cart | A cart associated with an authenticated user account |
-| Cart Merge | Process of combining session cart with user cart after login |
-| Price Snapshot | Capturing product price at the time of adding to cart |
-| Cart Abandonment | When a user adds items but doesn't complete checkout |
-| Stock Reservation | Temporarily holding inventory for items in cart |
-| Cart Expiration | Automatic cleanup of inactive carts after a period |
+| Cart | A temporary container for products a user intends to purchase |
+| Cart Item | A product added to a cart with specific quantity |
+| Session | A temporary identifier for guest users |
+| Coupon | A code that provides discounts on cart total |
+| Abandonment | When a user leaves items in cart without completing purchase |
+| Conversion | When a cart is successfully checked out |
 
-### 14.4 Change Log
+### 14.2 References
 
-| Version | Date | Author | Changes |
-|---------|------|--------|----------|
-| 1.0 | 2024-01-15 | Engineering Team | Initial LLD document |
-| 1.1 | 2024-01-18 | Engineering Team | Added caching strategy and error handling |
-| 1.2 | 2024-01-21 | Engineering Team | Added integration points and monitoring |
-| 1.3 | 2024-01-21 | Engineering Team | Applied RCA modifications: Added presentation layer components, documented default quantity behavior, documented quantity mutation recalculation logic, and documented empty cart UI redirection |
-| 1.4 | 2024-01-21 | Engineering Team | Applied targeted RCA enhancements: Added price_at_addition field to cart_items schema for price snapshot mechanism, updated API endpoints to include /api/v1 prefix, added subtotal field to GET cart response, enhanced business logic with explicit recalculation triggers for PUT operations, added default quantity handling logic (defaults to 1), enhanced empty cart handling with isEmpty flag, and added comprehensive documentation for all new features |
-
----
-
-## 15. Approval
-
-| Role | Name | Signature | Date |
-|------|------|-----------|------|
-| Technical Lead | | | |
-| Senior Engineer | | | |
-| QA Lead | | | |
-| Product Manager | | | |
+1. FastAPI Documentation: https://fastapi.tiangolo.com/
+2. PostgreSQL Documentation: https://www.postgresql.org/docs/
+3. Redis Documentation: https://redis.io/documentation
+4. Pydantic Documentation: https://docs.pydantic.dev/
+5. Docker Documentation: https://docs.docker.com/
+6. Kubernetes Documentation: https://kubernetes.io/docs/
 
 ---
 
