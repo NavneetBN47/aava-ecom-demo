@@ -6,6 +6,7 @@
 |---------|------|--------|----------|
 | 1.0 | 2024-01-15 | Engineering Team | Initial LLD |
 | 1.1 | 2024-01-20 | Engineering Team | Cart API Updates |
+| 1.2 | 2024-01-21 | Engineering Team | Added empty cart handling, price snapshot, and automatic recalculation |
 
 ---
 
@@ -189,6 +190,7 @@ class ProductRepository {
 - Cart item operations
 - Cart persistence
 - Price calculations
+- **Empty cart state handling with UI redirection**
 
 #### 4.3.2 Class Diagram
 ```typescript
@@ -203,7 +205,70 @@ class CartService {
   async removeItem(userId: string, itemId: string): Promise<Cart>;
   async clearCart(userId: string): Promise<void>;
   async calculateTotal(userId: string): Promise<CartTotal>;
+  async checkEmptyCartState(userId: string): Promise<EmptyCartResponse>;
 }
+```
+
+#### 4.3.3 Empty Cart State Handling
+
+**Business Logic Rule**: When a cart becomes empty (no items), the system must trigger specific UI redirection to guide the user to continue shopping.
+
+**Implementation Details**:
+
+```typescript
+interface EmptyCartResponse {
+  isEmpty: boolean;
+  redirectUrl?: string;
+  message?: string;
+}
+
+class CartService {
+  async checkEmptyCartState(userId: string): Promise<EmptyCartResponse> {
+    const cart = await this.getCart(userId);
+    
+    if (!cart.items || cart.items.length === 0) {
+      return {
+        isEmpty: true,
+        redirectUrl: '/products',
+        message: 'Your cart is empty. Continue shopping to add items.'
+      };
+    }
+    
+    return {
+      isEmpty: false
+    };
+  }
+  
+  async removeItem(userId: string, itemId: string): Promise<Cart> {
+    const cart = await this.cartRepository.removeItem(userId, itemId);
+    
+    // Check if cart is now empty and trigger UI redirection logic
+    if (cart.items.length === 0) {
+      // Emit event or return flag for UI to redirect to 'continue shopping'
+      await this.emitEmptyCartEvent(userId);
+    }
+    
+    return cart;
+  }
+  
+  private async emitEmptyCartEvent(userId: string): Promise<void> {
+    // Event emission logic for empty cart state
+    // This can be used by the frontend to redirect to /products or show 'continue shopping' link
+  }
+}
+```
+
+**Empty Cart State Flow Diagram**:
+
+```mermaid
+flowchart TD
+    A[User Action: Remove Item] --> B{Check Cart Items}
+    B -->|Items Remaining| C[Return Updated Cart]
+    B -->|No Items| D[Cart is Empty]
+    D --> E[Emit Empty Cart Event]
+    E --> F[Return Empty Cart Response]
+    F --> G[UI Redirects to Continue Shopping]
+    G --> H[Display Products Page]
 ```
 
 ### 4.4 Order Service
@@ -454,6 +519,28 @@ Authorization: Bearer {accessToken}
 }
 ```
 
+**Response for Empty Cart** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "cartId": "cart_usr_1234567890",
+    "userId": "usr_1234567890",
+    "items": [],
+    "summary": {
+      "subtotal": 0.00,
+      "tax": 0.00,
+      "shipping": 0.00,
+      "total": 0.00
+    },
+    "isEmpty": true,
+    "redirectUrl": "/products",
+    "message": "Your cart is empty. Continue shopping to add items.",
+    "updatedAt": "2024-01-15T14:30:00Z"
+  }
+}
+```
+
 #### 5.3.2 Add Item to Cart
 **Endpoint**: `POST /api/v1/cart/items`
 
@@ -469,6 +556,16 @@ Authorization: Bearer {accessToken}
   "quantity": 2
 }
 ```
+
+**Default Quantity Behavior**: If the `quantity` field is not provided in the request body, the system will default to adding 1 unit of the product to the cart.
+
+**Request Body (with default quantity)**:
+```json
+{
+  "productId": "prod_001"
+}
+```
+This will add 1 unit of product `prod_001` to the cart.
 
 **Response** (201 Created):
 ```json
@@ -497,6 +594,11 @@ Authorization: Bearer {accessToken}
 }
 ```
 
+**Implementation Notes**:
+- The `quantity` parameter is optional and defaults to 1 if not specified
+- The current price of the product at the time of addition is captured as a price snapshot
+- This ensures accurate cart calculations even if product prices change later
+
 #### 5.3.3 Update Cart Item
 **Endpoint**: `PUT /api/v1/cart/items/{itemId}`
 
@@ -511,6 +613,13 @@ Authorization: Bearer {accessToken}
   "quantity": 3
 }
 ```
+
+**Automatic Recalculation Behavior**: Any quantity mutation (update) triggers automatic recalculation of:
+- Item subtotal (quantity × price snapshot)
+- Cart subtotal (sum of all item subtotals)
+- Tax (based on updated subtotal)
+- Shipping (if applicable based on cart value)
+- Cart total (subtotal + tax + shipping)
 
 **Response** (200 OK):
 ```json
@@ -533,10 +642,38 @@ Authorization: Bearer {accessToken}
       "tax": 23.99,
       "shipping": 10.00,
       "total": 333.96
-    }
+    },
+    "recalculated": true
   },
   "message": "Cart item updated successfully"
 }
+```
+
+**Recalculation Flow Diagram**:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant CartAPI
+    participant CartService
+    participant PricingService
+    participant Database
+    
+    Client->>CartAPI: PUT /api/v1/cart/items/{itemId}
+    CartAPI->>CartService: updateItem(userId, itemId, quantity)
+    CartService->>Database: Update item quantity
+    Database-->>CartService: Updated item
+    CartService->>PricingService: recalculateCart(cartId)
+    PricingService->>PricingService: Calculate item subtotals
+    PricingService->>PricingService: Calculate cart subtotal
+    PricingService->>PricingService: Calculate tax
+    PricingService->>PricingService: Calculate shipping
+    PricingService->>PricingService: Calculate total
+    PricingService-->>CartService: Updated cart with totals
+    CartService->>Database: Save updated cart
+    Database-->>CartService: Confirmation
+    CartService-->>CartAPI: Updated cart data
+    CartAPI-->>Client: 200 OK with recalculated cart
 ```
 
 #### 5.3.4 Remove Item from Cart
@@ -559,11 +696,19 @@ Authorization: Bearer {accessToken}
       "tax": 0.00,
       "shipping": 0.00,
       "total": 0.00
-    }
+    },
+    "isEmpty": true,
+    "redirectUrl": "/products",
+    "message": "Your cart is empty. Continue shopping to add items."
   },
   "message": "Item removed from cart successfully"
 }
 ```
+
+**Empty Cart State Handling**: When the last item is removed from the cart, the response includes:
+- `isEmpty`: Boolean flag set to `true`
+- `redirectUrl`: URL to redirect user to continue shopping (typically `/products`)
+- `message`: User-friendly message prompting to continue shopping
 
 ### 5.4 Order Management APIs
 
@@ -865,6 +1010,33 @@ CREATE TABLE cart_items (
     INDEX idx_product_id (product_id),
     UNIQUE KEY unique_cart_product (cart_id, product_id)
 );
+```
+
+**Price Snapshot Documentation**:
+
+The `price` field in the `cart_items` table serves as a **price snapshot** that captures the product's price at the time it was added to the cart. This design ensures:
+
+1. **Price Consistency**: The cart displays the price that was valid when the user added the item, preventing confusion if product prices change
+2. **Accurate Calculations**: Cart subtotals and totals are calculated using the snapshot price, not the current product price
+3. **Historical Accuracy**: When orders are created from carts, they reflect the prices the customer agreed to at the time of cart addition
+4. **Business Logic Compliance**: Aligns with the requirement that CartItem entity must contain "current Price Snapshot"
+
+**Implementation Notes**:
+- When adding an item to cart, the current `products.price` value is copied to `cart_items.price`
+- This snapshot price remains unchanged even if the product price is updated in the `products` table
+- Cart calculations (subtotal, tax, total) always use `cart_items.price`, not `products.price`
+- When displaying cart items, the UI should show the snapshot price to maintain consistency
+
+**Price Snapshot Flow Diagram**:
+
+```mermaid
+flowchart LR
+    A[Product Price: $99.99] --> B[User Adds to Cart]
+    B --> C[Snapshot Price: $99.99]
+    C --> D[Store in cart_items.price]
+    E[Product Price Updated: $89.99] -.->|Does Not Affect| D
+    D --> F[Cart Calculation Uses $99.99]
+    F --> G[Order Created with $99.99]
 ```
 
 #### 6.2.5 Orders Table
@@ -1572,5 +1744,5 @@ if (process.env.NODE_ENV !== 'production') {
 ## Document Control
 
 **Document Owner:** Engineering Team  
-**Last Updated:** 2024-01-20  
-**Next Review Date:** 2024-02-20
+**Last Updated:** 2024-01-21  
+**Next Review Date:** 2024-02-21
