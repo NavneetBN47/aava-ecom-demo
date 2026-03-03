@@ -6,7 +6,7 @@
 |---------|------|--------|----------|
 | 1.0 | 2024-01-15 | Engineering Team | Initial LLD |
 | 1.1 | 2024-01-20 | Engineering Team | Cart API Updates |
-| 1.2 | 2024-01-21 | Engineering Team | Added empty cart handling, price snapshot, and automatic recalculation |
+| 1.2 | 2024-01-21 | Engineering Team | Added empty cart handling, default quantity behavior, and price snapshot documentation |
 
 ---
 
@@ -190,7 +190,7 @@ class ProductRepository {
 - Cart item operations
 - Cart persistence
 - Price calculations
-- **Empty cart state handling with UI redirection**
+- Empty cart state handling and UI redirection
 
 #### 4.3.2 Class Diagram
 ```typescript
@@ -211,7 +211,12 @@ class CartService {
 
 #### 4.3.3 Empty Cart State Handling
 
-**Business Logic Rule**: When a cart becomes empty (no items), the system must trigger specific UI redirection to guide the user to continue shopping.
+**Purpose**: Handle empty cart scenarios and provide appropriate UI redirection.
+
+**Business Logic**:
+- When a cart becomes empty (all items removed or cart cleared), the system must detect this state
+- Empty cart state triggers a specific UI response with a "continue shopping" redirection link
+- This ensures users are guided back to the product catalog for a seamless shopping experience
 
 **Implementation Details**:
 
@@ -222,54 +227,39 @@ interface EmptyCartResponse {
   message?: string;
 }
 
-class CartService {
-  async checkEmptyCartState(userId: string): Promise<EmptyCartResponse> {
-    const cart = await this.getCart(userId);
-    
-    if (!cart.items || cart.items.length === 0) {
-      return {
-        isEmpty: true,
-        redirectUrl: '/products',
-        message: 'Your cart is empty. Continue shopping to add items.'
-      };
-    }
-    
+async checkEmptyCartState(userId: string): Promise<EmptyCartResponse> {
+  const cart = await this.getCart(userId);
+  
+  if (!cart.items || cart.items.length === 0) {
     return {
-      isEmpty: false
+      isEmpty: true,
+      redirectUrl: '/products',
+      message: 'Your cart is empty. Continue shopping to add items.'
     };
   }
   
-  async removeItem(userId: string, itemId: string): Promise<Cart> {
-    const cart = await this.cartRepository.removeItem(userId, itemId);
-    
-    // Check if cart is now empty and trigger UI redirection logic
-    if (cart.items.length === 0) {
-      // Emit event or return flag for UI to redirect to 'continue shopping'
-      await this.emitEmptyCartEvent(userId);
-    }
-    
-    return cart;
-  }
-  
-  private async emitEmptyCartEvent(userId: string): Promise<void> {
-    // Event emission logic for empty cart state
-    // This can be used by the frontend to redirect to /products or show 'continue shopping' link
-  }
+  return {
+    isEmpty: false
+  };
 }
 ```
 
-**Empty Cart State Flow Diagram**:
+**Flow Diagram**:
 
 ```mermaid
 flowchart TD
-    A[User Action: Remove Item] --> B{Check Cart Items}
-    B -->|Items Remaining| C[Return Updated Cart]
-    B -->|No Items| D[Cart is Empty]
-    D --> E[Emit Empty Cart Event]
-    E --> F[Return Empty Cart Response]
-    F --> G[UI Redirects to Continue Shopping]
-    G --> H[Display Products Page]
+    A[Cart Operation] --> B{Check Cart Items}
+    B -->|Items Exist| C[Return Cart Data]
+    B -->|No Items| D[Empty Cart Detected]
+    D --> E[Generate Redirection Response]
+    E --> F[Return redirectUrl: /products]
+    F --> G[UI Displays Continue Shopping Link]
 ```
+
+**API Integration**:
+- All cart retrieval and modification endpoints check for empty state
+- Response includes `isEmpty` flag and `redirectUrl` when applicable
+- Frontend uses this information to display appropriate UI elements
 
 ### 4.4 Order Service
 
@@ -497,6 +487,7 @@ Authorization: Bearer {accessToken}
   "data": {
     "cartId": "cart_usr_1234567890",
     "userId": "usr_1234567890",
+    "isEmpty": false,
     "items": [
       {
         "itemId": "item_001",
@@ -526,6 +517,7 @@ Authorization: Bearer {accessToken}
   "data": {
     "cartId": "cart_usr_1234567890",
     "userId": "usr_1234567890",
+    "isEmpty": true,
     "items": [],
     "summary": {
       "subtotal": 0.00,
@@ -533,7 +525,6 @@ Authorization: Bearer {accessToken}
       "shipping": 0.00,
       "total": 0.00
     },
-    "isEmpty": true,
     "redirectUrl": "/products",
     "message": "Your cart is empty. Continue shopping to add items.",
     "updatedAt": "2024-01-15T14:30:00Z"
@@ -557,15 +548,18 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-**Default Quantity Behavior**: If the `quantity` field is not provided in the request body, the system will default to adding 1 unit of the product to the cart.
+**Default Behavior**:
+- If `quantity` is not specified in the request body, it defaults to 1
+- The system automatically fetches the current product price and stores it as a price snapshot
+- This ensures cart calculations remain accurate even if product prices change later
 
-**Request Body (with default quantity)**:
+**Request Body (Minimal)**:
 ```json
 {
   "productId": "prod_001"
 }
 ```
-This will add 1 unit of product `prod_001` to the cart.
+*Note: When quantity is omitted, the system defaults to quantity = 1*
 
 **Response** (201 Created):
 ```json
@@ -573,6 +567,7 @@ This will add 1 unit of product `prod_001` to the cart.
   "success": true,
   "data": {
     "cartId": "cart_usr_1234567890",
+    "isEmpty": false,
     "items": [
       {
         "itemId": "item_001",
@@ -594,11 +589,6 @@ This will add 1 unit of product `prod_001` to the cart.
 }
 ```
 
-**Implementation Notes**:
-- The `quantity` parameter is optional and defaults to 1 if not specified
-- The current price of the product at the time of addition is captured as a price snapshot
-- This ensures accurate cart calculations even if product prices change later
-
 #### 5.3.3 Update Cart Item
 **Endpoint**: `PUT /api/v1/cart/items/{itemId}`
 
@@ -614,12 +604,11 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-**Automatic Recalculation Behavior**: Any quantity mutation (update) triggers automatic recalculation of:
-- Item subtotal (quantity × price snapshot)
-- Cart subtotal (sum of all item subtotals)
-- Tax (based on updated subtotal)
-- Shipping (if applicable based on cart value)
-- Cart total (subtotal + tax + shipping)
+**Automatic Recalculation Behavior**:
+- Any quantity mutation automatically triggers recalculation of item subtotal
+- Cart summary (subtotal, tax, shipping, total) is automatically recalculated
+- Price snapshot stored in cart item is used for calculations (not current product price)
+- Response includes updated cart with all recalculated values
 
 **Response** (200 OK):
 ```json
@@ -627,6 +616,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "cartId": "cart_usr_1234567890",
+    "isEmpty": false,
     "items": [
       {
         "itemId": "item_001",
@@ -642,14 +632,13 @@ Authorization: Bearer {accessToken}
       "tax": 23.99,
       "shipping": 10.00,
       "total": 333.96
-    },
-    "recalculated": true
+    }
   },
   "message": "Cart item updated successfully"
 }
 ```
 
-**Recalculation Flow Diagram**:
+**Calculation Flow**:
 
 ```mermaid
 sequenceDiagram
@@ -658,22 +647,17 @@ sequenceDiagram
     participant CartService
     participant PricingService
     participant Database
-    
+
     Client->>CartAPI: PUT /api/v1/cart/items/{itemId}
     CartAPI->>CartService: updateItem(userId, itemId, quantity)
     CartService->>Database: Update item quantity
-    Database-->>CartService: Updated item
-    CartService->>PricingService: recalculateCart(cartId)
-    PricingService->>PricingService: Calculate item subtotals
-    PricingService->>PricingService: Calculate cart subtotal
-    PricingService->>PricingService: Calculate tax
-    PricingService->>PricingService: Calculate shipping
-    PricingService->>PricingService: Calculate total
-    PricingService-->>CartService: Updated cart with totals
-    CartService->>Database: Save updated cart
-    Database-->>CartService: Confirmation
-    CartService-->>CartAPI: Updated cart data
-    CartAPI-->>Client: 200 OK with recalculated cart
+    Database-->>CartService: Item updated
+    CartService->>PricingService: calculateItemSubtotal(item)
+    PricingService-->>CartService: Subtotal calculated
+    CartService->>PricingService: calculateCartTotal(cart)
+    PricingService-->>CartService: Total calculated
+    CartService-->>CartAPI: Updated cart with recalculated values
+    CartAPI-->>Client: 200 OK with updated cart
 ```
 
 #### 5.3.4 Remove Item from Cart
@@ -690,6 +674,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "cartId": "cart_usr_1234567890",
+    "isEmpty": true,
     "items": [],
     "summary": {
       "subtotal": 0.00,
@@ -697,7 +682,6 @@ Authorization: Bearer {accessToken}
       "shipping": 0.00,
       "total": 0.00
     },
-    "isEmpty": true,
     "redirectUrl": "/products",
     "message": "Your cart is empty. Continue shopping to add items."
   },
@@ -705,10 +689,7 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-**Empty Cart State Handling**: When the last item is removed from the cart, the response includes:
-- `isEmpty`: Boolean flag set to `true`
-- `redirectUrl`: URL to redirect user to continue shopping (typically `/products`)
-- `message`: User-friendly message prompting to continue shopping
+*Note: When the last item is removed, the response includes empty cart state with redirection information.*
 
 ### 5.4 Order Management APIs
 
@@ -1014,30 +995,30 @@ CREATE TABLE cart_items (
 
 **Price Snapshot Documentation**:
 
-The `price` field in the `cart_items` table serves as a **price snapshot** that captures the product's price at the time it was added to the cart. This design ensures:
+The `price` column in the `cart_items` table serves as a **price snapshot** mechanism:
 
-1. **Price Consistency**: The cart displays the price that was valid when the user added the item, preventing confusion if product prices change
-2. **Accurate Calculations**: Cart subtotals and totals are calculated using the snapshot price, not the current product price
-3. **Historical Accuracy**: When orders are created from carts, they reflect the prices the customer agreed to at the time of cart addition
-4. **Business Logic Compliance**: Aligns with the requirement that CartItem entity must contain "current Price Snapshot"
+- **Purpose**: Stores the product price at the time the item was added to the cart
+- **Rationale**: Ensures cart calculations remain accurate even if product prices change in the products table
+- **Behavior**: 
+  - When an item is added to cart, the current product price is fetched and stored in this column
+  - This snapshot price is used for all cart calculations (subtotal, total)
+  - Price changes in the products table do not affect existing cart items
+  - Provides price consistency for the customer's shopping session
 
-**Implementation Notes**:
-- When adding an item to cart, the current `products.price` value is copied to `cart_items.price`
-- This snapshot price remains unchanged even if the product price is updated in the `products` table
-- Cart calculations (subtotal, tax, total) always use `cart_items.price`, not `products.price`
-- When displaying cart items, the UI should show the snapshot price to maintain consistency
-
-**Price Snapshot Flow Diagram**:
-
-```mermaid
-flowchart LR
-    A[Product Price: $99.99] --> B[User Adds to Cart]
-    B --> C[Snapshot Price: $99.99]
-    C --> D[Store in cart_items.price]
-    E[Product Price Updated: $89.99] -.->|Does Not Affect| D
-    D --> F[Cart Calculation Uses $99.99]
-    F --> G[Order Created with $99.99]
+**Example Scenario**:
 ```
+1. Product "Wireless Headphones" has price $99.99
+2. User adds to cart → cart_items.price = 99.99 (snapshot)
+3. Product price changes to $89.99 in products table
+4. User's cart still shows $99.99 (using snapshot)
+5. Cart calculations use the snapshot price for accuracy
+```
+
+This design ensures:
+- Price transparency for customers
+- Accurate cart totals regardless of price fluctuations
+- Consistent checkout experience
+- Historical price tracking for analytics
 
 #### 6.2.5 Orders Table
 ```sql
