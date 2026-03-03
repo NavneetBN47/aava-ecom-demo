@@ -115,6 +115,7 @@ CREATE TABLE cart_items (
     variant_id UUID,
     quantity INTEGER NOT NULL DEFAULT 1,
     unit_price DECIMAL(10,2) NOT NULL,
+    price_at_addition DECIMAL(10,2) NOT NULL,
     subtotal DECIMAL(10,2) NOT NULL,
     discount_amount DECIMAL(10,2) DEFAULT 0.00,
     tax_amount DECIMAL(10,2) DEFAULT 0.00,
@@ -132,44 +133,12 @@ CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
 CREATE UNIQUE INDEX idx_cart_items_unique ON cart_items(cart_id, product_id, variant_id);
 ```
 
-#### 3.1.3 Price Snapshot Mechanism
-
-**Purpose:** Capture product price at the time of adding to cart to handle price changes and maintain pricing integrity.
-
-**Implementation Details:**
-- The `unit_price` field in `cart_items` table serves as the price snapshot
-- When an item is added to cart, the current product price is fetched from Product Service and stored in `unit_price`
-- This snapshot price remains unchanged even if the product price changes later
-- Price comparison logic can be implemented to notify users of price changes before checkout
-
-**Price Change Handling:**
-```javascript
-class PriceSnapshotHandler {
-    async validatePriceSnapshot(cartItemId) {
-        const cartItem = await this.getCartItem(cartItemId);
-        const currentPrice = await this.productService.getPrice(cartItem.productId);
-        
-        if (cartItem.unitPrice !== currentPrice) {
-            return {
-                priceChanged: true,
-                snapshotPrice: cartItem.unitPrice,
-                currentPrice: currentPrice,
-                difference: currentPrice - cartItem.unitPrice
-            };
-        }
-        
-        return { priceChanged: false };
-    }
-    
-    async updatePriceSnapshot(cartItemId) {
-        const cartItem = await this.getCartItem(cartItemId);
-        const currentPrice = await this.productService.getPrice(cartItem.productId);
-        
-        await this.repository.updateItemPrice(cartItemId, currentPrice);
-        return { updated: true, newPrice: currentPrice };
-    }
-}
-```
+**Price Snapshot Mechanism:**
+The `price_at_addition` field captures the product price at the moment the item is added to the cart. This enables:
+- Price change detection by comparing with current product price
+- Historical price tracking for audit purposes
+- Price protection for customers during checkout
+- Business logic to notify users of price changes before purchase
 
 ### 3.2 Data Models
 
@@ -232,6 +201,7 @@ class CartItem {
         this.variantId = data.variant_id;
         this.quantity = data.quantity;
         this.unitPrice = data.unit_price;
+        this.priceAtAddition = data.price_at_addition;
         this.subtotal = data.subtotal;
         this.discountAmount = data.discount_amount;
         this.taxAmount = data.tax_amount;
@@ -240,6 +210,14 @@ class CartItem {
 
     calculateSubtotal() {
         return this.unitPrice * this.quantity;
+    }
+    
+    hasPriceChanged() {
+        return this.unitPrice !== this.priceAtAddition;
+    }
+    
+    getPriceChangeDelta() {
+        return this.unitPrice - this.priceAtAddition;
     }
 }
 ```
@@ -313,9 +291,11 @@ The presentation layer handles user interactions and UI state management for the
    - Validate product availability
    - Check inventory stock
    - Fetch current product price (price snapshot mechanism)
+   - Capture price at addition time in `price_at_addition` field
    - Check for existing item (same product + variant)
    - If exists: increment quantity
    - If new: create cart item entry
+   - **Default Quantity Handling**: If quantity parameter is not provided in the request, the system automatically defaults to quantity = 1
    - Recalculate cart totals
    - Update cache
    - Publish cart_item_added event
@@ -324,8 +304,8 @@ The presentation layer handles user interactions and UI state management for the
    - Validate quantity constraints (min: 1, max: stock level)
    - Check inventory availability
    - Update cart item quantity
+   - **Automatic Recalculation Trigger**: Upon any PUT /api/v1/cart/items/{itemId} operation, the system must immediately recalculate item subtotal (unit_price × new_quantity) and cart total (sum of all item subtotals) before returning the response. This is a mandatory post-update operation that ensures data consistency.
    - **Quantity mutation via PUT triggers automatic recalculation**: When quantity is updated, the system automatically recalculates the item subtotal (unit_price × new_quantity) and updates the cart total by summing all item subtotals
-   - **Explicit Recalculation Trigger**: Upon any PUT /api/v1/cart/items/:id operation, the system must immediately recalculate item subtotal and cart total before returning the response. This is a mandatory post-update operation that ensures data consistency.
    - Update cache
    - Publish cart_item_updated event
 
@@ -340,8 +320,9 @@ The presentation layer handles user interactions and UI state management for the
    - Check cache first
    - If cache miss: fetch from database
    - Enrich with product details
+   - Calculate individual item subtotals (price × quantity)
    - Update cache
-   - Return cart with items
+   - Return cart with items including subtotal field
 
 5. **Clear Cart**
    - Delete all cart items
@@ -355,8 +336,8 @@ When a cart becomes empty (all items removed or cart cleared):
 - Set `total_items` to 0
 - Set `total_amount` to 0.00
 - Maintain cart record (don't delete)
+- **Empty Cart State Business Rule**: When cart is empty (itemCount = 0), the system must return an empty cart indicator in the API response, and the frontend must display the Empty Cart View component with a prominent 'continue shopping' redirection link (typically to homepage or product catalog)
 - **Empty cart state triggers UI 'continue shopping' redirection link**: The frontend receives an empty cart response and displays the Empty Cart View component with a prominent call-to-action link redirecting users to continue shopping (typically to homepage or product catalog)
-- **Business Rule for Empty Cart UI**: When cart is empty (itemCount = 0), the system must return an empty cart indicator in the API response, and the frontend must display the 'continue shopping' redirection link as specified in the Empty Cart View component (Section 4.2.2)
 - Cache the empty state
 - Publish cart_emptied event
 
@@ -434,6 +415,7 @@ class CartRepository {
                            'variant_id', ci.variant_id,
                            'quantity', ci.quantity,
                            'unit_price', ci.unit_price,
+                           'price_at_addition', ci.price_at_addition,
                            'subtotal', ci.subtotal
                        )
                    ) FILTER (WHERE ci.cart_item_id IS NOT NULL) as items
@@ -447,8 +429,8 @@ class CartRepository {
 
     async addItemToCart(cartId, productId, variantId, quantity, unitPrice) {
         const query = `
-            INSERT INTO cart_items (cart_id, product_id, variant_id, quantity, unit_price, subtotal)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO cart_items (cart_id, product_id, variant_id, quantity, unit_price, price_at_addition, subtotal)
+            VALUES ($1, $2, $3, $4, $5, $5, $6)
             ON CONFLICT (cart_id, product_id, variant_id)
             DO UPDATE SET 
                 quantity = cart_items.quantity + EXCLUDED.quantity,
@@ -497,6 +479,10 @@ class CartRepository {
 
 ### 5.1 API Endpoints Overview
 
+**Base Path**: `/api/v1`
+
+**API Gateway Configuration**: All cart endpoints are prefixed with `/api/v1` for API versioning consistency.
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
 | GET | /api/v1/cart | Get user's cart | Yes |
@@ -538,6 +524,7 @@ Content-Type: application/json
                 "variantName": "Black",
                 "quantity": 2,
                 "unitPrice": 99.99,
+                "priceAtAddition": 99.99,
                 "subtotal": 199.98,
                 "imageUrl": "https://cdn.example.com/images/prod_001.jpg"
             },
@@ -549,6 +536,7 @@ Content-Type: application/json
                 "variantName": null,
                 "quantity": 1,
                 "unitPrice": 99.99,
+                "priceAtAddition": 89.99,
                 "subtotal": 99.99,
                 "imageUrl": "https://cdn.example.com/images/prod_002.jpg"
             }
@@ -559,7 +547,11 @@ Content-Type: application/json
 }
 ```
 
-**Response (404 Not Found) - Empty Cart:**
+**Response Field Specifications:**
+- `subtotal`: Calculated as `unitPrice × quantity` for each cart item. This field is mandatory in the response and represents the individual item total before cart-level discounts.
+- `priceAtAddition`: The product price captured at the moment the item was added to the cart, enabling price change detection.
+
+**Response (200 OK) - Empty Cart:**
 ```json
 {
     "success": true,
@@ -571,11 +563,15 @@ Content-Type: application/json
         "totalAmount": 0.00,
         "currency": "USD",
         "items": [],
+        "isEmpty": true,
         "createdAt": "2024-01-21T10:30:00Z",
         "updatedAt": "2024-01-21T11:15:00Z"
     }
 }
 ```
+
+**Empty Cart Response Specification:**
+- `isEmpty`: Boolean flag set to `true` when `totalItems = 0`, triggering the frontend to display the Empty Cart View with 'continue shopping' redirection link.
 
 ### 5.3 Cart APIs
 
@@ -611,6 +607,11 @@ Content-Type: application/json
 - `variantId`: Optional, must be valid UUID if provided
 - `quantity`: Optional, integer, min: 1, max: 99, **defaults to 1 if not provided**
 
+**Default Quantity Handling Logic:**
+```javascript
+const quantity = req.body.quantity || 1; // Default to 1 if not provided
+```
+
 **Response (201 Created):**
 ```json
 {
@@ -623,6 +624,7 @@ Content-Type: application/json
         "variantId": "var_001",
         "quantity": 2,
         "unitPrice": 99.99,
+        "priceAtAddition": 99.99,
         "subtotal": 199.98
     }
 }
@@ -673,7 +675,7 @@ Content-Type: application/json
 
 #### PUT /api/v1/cart/items/:id
 
-**Description:** Update the quantity of an item in the cart.
+**Description:** Update the quantity of an item in the cart. **Automatic recalculation is triggered immediately upon successful update.**
 
 **Request Headers:**
 ```
@@ -690,6 +692,16 @@ Content-Type: application/json
 
 **Validation Rules:**
 - `quantity`: Required, integer, min: 1, max: 99
+
+**Recalculation Logic:**
+Upon any PUT /api/v1/cart/items/{itemId} operation:
+1. Update cart item quantity in database
+2. Immediately recalculate item subtotal: `subtotal = unit_price × new_quantity`
+3. Immediately recalculate cart total: `total_amount = SUM(all item subtotals)`
+4. Update `updated_at` timestamp
+5. Return response with updated values
+
+This is a mandatory post-update operation ensuring data consistency.
 
 **Response (200 OK):**
 ```json
@@ -1535,7 +1547,7 @@ console.log(cart);
 | 1.1 | 2024-01-18 | Engineering Team | Added caching strategy and error handling |
 | 1.2 | 2024-01-21 | Engineering Team | Added integration points and monitoring |
 | 1.3 | 2024-01-21 | Engineering Team | Applied RCA modifications: Added presentation layer components, documented default quantity behavior, documented quantity mutation recalculation logic, and documented empty cart UI redirection |
-| 1.4 | 2024-01-21 | Engineering Team | Added price snapshot mechanism (Section 3.1.3), enhanced empty cart business rule (Section 4.3.2), added explicit recalculation trigger for PUT operations (Section 4.3.1) |
+| 1.4 | 2024-01-21 | Engineering Team | Applied targeted RCA enhancements: Added price_at_addition field to cart_items schema for price snapshot mechanism, updated API endpoints to include /api/v1 prefix, added subtotal field to GET cart response, enhanced business logic with explicit recalculation triggers for PUT operations, added default quantity handling logic (defaults to 1), enhanced empty cart handling with isEmpty flag, and added comprehensive documentation for all new features |
 
 ---
 
