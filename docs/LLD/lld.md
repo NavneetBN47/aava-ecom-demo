@@ -1,1435 +1,1608 @@
 # Low Level Design Document
+## E-Commerce Shopping Cart Module
 
-## 1. Introduction
+### 1. Introduction
 
-### 1.1 Purpose
-This Low Level Design (LLD) document provides detailed technical specifications for the E-commerce Platform. It translates the High Level Design into implementable components, defining the internal structure, algorithms, data models, and interfaces required for development.
+#### 1.1 Purpose
+This document provides a detailed low-level design for the Shopping Cart module of an e-commerce platform. It covers the technical implementation details, data structures, APIs, and integration points necessary for development.
 
-### 1.2 Scope
-This document covers:
-- Detailed component architecture and class designs
-- Database schema and data models
-- API specifications and interfaces
-- Business logic implementation details
-- Security implementation
-- Performance optimization strategies
+#### 1.2 Scope
+The Shopping Cart module handles:
+- Adding/removing items to/from cart
+- Updating item quantities
+- Calculating totals and applying discounts
+- Managing cart persistence across sessions
+- Integration with inventory and pricing services
 
 Out of scope:
-- Infrastructure deployment details (covered in deployment documentation)
-- Third-party service integration specifics
-- UI/UX implementation details
+- Payment processing
+- Order fulfillment
+- Wishlist functionality
+- Save for Later feature
 
-### 1.3 Definitions and Acronyms
-- **LLD**: Low Level Design
-- **HLD**: High Level Design
-- **API**: Application Programming Interface
-- **DTO**: Data Transfer Object
-- **DAO**: Data Access Object
-- **JWT**: JSON Web Token
-- **RBAC**: Role-Based Access Control
+#### 1.3 Definitions and Acronyms
+- **SKU**: Stock Keeping Unit
+- **UUID**: Universally Unique Identifier
+- **REST**: Representational State Transfer
+- **ACID**: Atomicity, Consistency, Isolation, Durability
 
-## 2. System Architecture Overview
+---
 
-### 2.1 Technology Stack
+### 2. System Architecture
 
-#### Backend
-- **Framework**: Spring Boot 3.x
-- **Language**: Java 17
-- **Build Tool**: Maven
-- **ORM**: Spring Data JPA with Hibernate
-- **Database**: PostgreSQL 14+
-- **Cache**: Redis 7.x
-- **Message Queue**: RabbitMQ
-- **Search Engine**: Elasticsearch 8.x
-
-#### Security
-- Spring Security 6.x
-- JWT for authentication
-- OAuth 2.0 for social login
-
-#### Testing
-- JUnit 5
-- Mockito
-- TestContainers
-
-### 2.2 Package Structure
-
+#### 2.1 Component Overview
 ```
-com.ecommerce
-├── config
-│   ├── SecurityConfig.java
-│   ├── DatabaseConfig.java
-│   ├── CacheConfig.java
-│   └── MessagingConfig.java
-├── controller
-│   ├── UserController.java
-│   ├── ProductController.java
-│   ├── OrderController.java
-│   └── PaymentController.java
-├── service
-│   ├── UserService.java
-│   ├── ProductService.java
-│   ├── OrderService.java
-│   ├── PaymentService.java
-│   └── NotificationService.java
-├── repository
-│   ├── UserRepository.java
-│   ├── ProductRepository.java
-│   ├── OrderRepository.java
-│   └── PaymentRepository.java
-├── model
-│   ├── entity
-│   │   ├── User.java
-│   │   ├── Product.java
-│   │   ├── Order.java
-│   │   └── Payment.java
-│   └── dto
-│       ├── UserDTO.java
-│       ├── ProductDTO.java
-│       ├── OrderDTO.java
-│       └── PaymentDTO.java
-├── security
-│   ├── JwtTokenProvider.java
-│   ├── JwtAuthenticationFilter.java
-│   └── CustomUserDetailsService.java
-├── exception
-│   ├── GlobalExceptionHandler.java
-│   ├── ResourceNotFoundException.java
-│   └── BusinessException.java
-└── util
-    ├── ValidationUtil.java
-    └── DateUtil.java
-```
-
-## 3. Data Models
-
-### 3.1 Entity Relationship Diagram
-
-```
-┌─────────────┐       ┌──────────────┐       ┌─────────────┐
-│    User     │       │   Product    │       │   Category  │
-├─────────────┤       ├──────────────┤       ├─────────────┤
-│ id (PK)     │       │ id (PK)      │       │ id (PK)     │
-│ email       │       │ name         │───────│ name        │
-│ password    │       │ description  │       │ description │
-│ firstName   │       │ price        │       └─────────────┘
-│ lastName    │       │ stock        │
-│ role        │       │ category_id  │
-└──────┬──────┘       └──────┬───────┘
-       │                     │
-       │                     │
-       │    ┌────────────────┘
-       │    │
-       │    │
-┌──────▼────▼──────┐
-│      Order       │
-├──────────────────┤
-│ id (PK)          │
-│ user_id (FK)     │
-│ orderDate        │
-│ status           │
-│ totalAmount      │
-└────────┬─────────┘
+┌─────────────────┐
+│   Web Client    │
+└────────┬────────┘
          │
+         ▼
+┌─────────────────┐
+│   API Gateway   │
+└────────┬────────┘
          │
-┌────────▼─────────┐       ┌──────────────┐
-│   OrderItem      │       │   Payment    │
-├──────────────────┤       ├──────────────┤
-│ id (PK)          │       │ id (PK)      │
-│ order_id (FK)    │───────│ order_id (FK)│
-│ product_id (FK)  │       │ amount       │
-│ quantity         │       │ method       │
-│ price            │       │ status       │
-└──────────────────┘       │ timestamp    │
-                           └──────────────┘
+         ▼
+┌─────────────────────────────────┐
+│   Shopping Cart Service         │
+│  ┌──────────────────────────┐   │
+│  │  Cart Controller         │   │
+│  └──────────┬───────────────┘   │
+│             │                   │
+│  ┌──────────▼───────────────┐   │
+│  │  Cart Business Logic     │   │
+│  └──────────┬───────────────┘   │
+│             │                   │
+│  ┌──────────▼───────────────┐   │
+│  │  Cart Repository         │   │
+│  └──────────┬───────────────┘   │
+└─────────────┼───────────────────┘
+              │
+    ┌─────────┴─────────┐
+    ▼                   ▼
+┌─────────┐      ┌──────────────┐
+│ Database│      │ Cache (Redis)│
+└─────────┘      └──────────────┘
 ```
 
-### 3.2 Entity Classes
+#### 2.2 Technology Stack
+- **Backend**: Node.js with Express.js
+- **Database**: PostgreSQL
+- **Cache**: Redis
+- **Message Queue**: RabbitMQ (for async operations)
+- **API Protocol**: REST with JSON
 
-#### 3.2.1 User Entity
+---
 
-```java
-@Entity
-@Table(name = "users")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class User {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(unique = true, nullable = false)
-    @Email
-    private String email;
-    
-    @Column(nullable = false)
-    private String password;
-    
-    @Column(nullable = false)
-    private String firstName;
-    
-    @Column(nullable = false)
-    private String lastName;
-    
-    @Enumerated(EnumType.STRING)
-    private UserRole role;
-    
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
-    private List<Order> orders;
-    
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-}
+### 3. Data Models
+
+#### 3.1 Database Schema
+
+##### 3.1.1 Cart Table
+```sql
+CREATE TABLE carts (
+    cart_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    session_id VARCHAR(255),
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP,
+    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(user_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_session_id (session_id),
+    INDEX idx_status (status)
+);
 ```
 
-#### 3.2.2 Product Entity
+##### 3.1.2 Cart Items Table
+```sql
+CREATE TABLE cart_items (
+    cart_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cart_id UUID NOT NULL,
+    product_id UUID NOT NULL,
+    sku VARCHAR(100) NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price DECIMAL(10, 2) NOT NULL,
+    discount_amount DECIMAL(10, 2) DEFAULT 0,
+    tax_amount DECIMAL(10, 2) DEFAULT 0,
+    total_price DECIMAL(10, 2) NOT NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cart FOREIGN KEY (cart_id) REFERENCES carts(cart_id) ON DELETE CASCADE,
+    CONSTRAINT fk_product FOREIGN KEY (product_id) REFERENCES products(product_id),
+    INDEX idx_cart_id (cart_id),
+    INDEX idx_product_id (product_id)
+);
+```
 
-```java
-@Entity
-@Table(name = "products")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Product {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(nullable = false)
-    private String name;
-    
-    @Column(length = 2000)
-    private String description;
-    
-    @Column(nullable = false)
-    private BigDecimal price;
-    
-    @Column(nullable = false)
-    private Integer stock;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
-    private Category category;
-    
-    @OneToMany(mappedBy = "product")
-    private List<OrderItem> orderItems;
-    
-    @Column(name = "image_url")
-    private String imageUrl;
-    
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+##### 3.1.3 Cart Metadata Table
+```sql
+CREATE TABLE cart_metadata (
+    metadata_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cart_id UUID NOT NULL,
+    subtotal DECIMAL(10, 2) NOT NULL,
+    discount_total DECIMAL(10, 2) DEFAULT 0,
+    tax_total DECIMAL(10, 2) DEFAULT 0,
+    shipping_cost DECIMAL(10, 2) DEFAULT 0,
+    grand_total DECIMAL(10, 2) NOT NULL,
+    item_count INTEGER DEFAULT 0,
+    coupon_code VARCHAR(50),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cart_meta FOREIGN KEY (cart_id) REFERENCES carts(cart_id) ON DELETE CASCADE,
+    UNIQUE (cart_id)
+);
+```
+
+#### 3.2 Data Transfer Objects (DTOs)
+
+##### 3.2.1 CartDTO
+```javascript
+class CartDTO {
+    constructor(data) {
+        this.cartId = data.cart_id;
+        this.userId = data.user_id;
+        this.sessionId = data.session_id;
+        this.status = data.status;
+        this.items = data.items || [];
+        this.metadata = data.metadata || {};
+        this.createdAt = data.created_at;
+        this.updatedAt = data.updated_at;
+        this.expiresAt = data.expires_at;
     }
 }
 ```
 
-#### 3.2.3 Order Entity
-
-```java
-@Entity
-@Table(name = "orders")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Order {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-    
-    @Column(name = "order_date", nullable = false)
-    private LocalDateTime orderDate;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private OrderStatus status;
-    
-    @Column(name = "total_amount", nullable = false)
-    private BigDecimal totalAmount;
-    
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
-    private List<OrderItem> orderItems;
-    
-    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL)
-    private Payment payment;
-    
-    @Column(name = "shipping_address")
-    private String shippingAddress;
-    
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-        orderDate = LocalDateTime.now();
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+##### 3.2.2 CartItemDTO
+```javascript
+class CartItemDTO {
+    constructor(data) {
+        this.cartItemId = data.cart_item_id;
+        this.cartId = data.cart_id;
+        this.productId = data.product_id;
+        this.sku = data.sku;
+        this.quantity = data.quantity;
+        this.unitPrice = data.unit_price;
+        this.discountAmount = data.discount_amount;
+        this.taxAmount = data.tax_amount;
+        this.totalPrice = data.total_price;
+        this.productDetails = data.product_details || {};
     }
 }
 ```
 
-#### 3.2.4 OrderItem Entity
-
-```java
-@Entity
-@Table(name = "order_items")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class OrderItem {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
-    private Product product;
-    
-    @Column(nullable = false)
-    private Integer quantity;
-    
-    @Column(nullable = false)
-    private BigDecimal price;
-    
-    public BigDecimal getSubtotal() {
-        return price.multiply(BigDecimal.valueOf(quantity));
+##### 3.2.3 CartMetadataDTO
+```javascript
+class CartMetadataDTO {
+    constructor(data) {
+        this.subtotal = data.subtotal;
+        this.discountTotal = data.discount_total;
+        this.taxTotal = data.tax_total;
+        this.shippingCost = data.shipping_cost;
+        this.grandTotal = data.grand_total;
+        this.itemCount = data.item_count;
+        this.couponCode = data.coupon_code;
     }
 }
 ```
 
-#### 3.2.5 Payment Entity
+---
 
-```java
-@Entity
-@Table(name = "payments")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Payment {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
-    
-    @Column(nullable = false)
-    private BigDecimal amount;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private PaymentMethod method;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private PaymentStatus status;
-    
-    @Column(name = "transaction_id")
-    private String transactionId;
-    
-    @Column(nullable = false)
-    private LocalDateTime timestamp;
-    
-    @PrePersist
-    protected void onCreate() {
-        timestamp = LocalDateTime.now();
-    }
-}
+### 4. API Specifications
+
+#### 4.1 REST Endpoints
+
+##### 4.1.1 Create/Get Cart
 ```
+GET /api/v1/cart
+Headers:
+  Authorization: Bearer {token}
+  X-Session-Id: {session_id}
 
-### 3.3 Enumerations
-
-```java
-public enum UserRole {
-    CUSTOMER,
-    ADMIN,
-    SELLER
-}
-
-public enum OrderStatus {
-    PENDING,
-    CONFIRMED,
-    PROCESSING,
-    SHIPPED,
-    DELIVERED,
-    CANCELLED
-}
-
-public enum PaymentMethod {
-    CREDIT_CARD,
-    DEBIT_CARD,
-    UPI,
-    NET_BANKING,
-    WALLET
-}
-
-public enum PaymentStatus {
-    PENDING,
-    COMPLETED,
-    FAILED,
-    REFUNDED
-}
-```
-
-## 4. API Specifications
-
-### 4.1 User Management APIs
-
-#### 4.1.1 User Registration
-
-```java
-@PostMapping("/api/users/register")
-public ResponseEntity<UserDTO> registerUser(@Valid @RequestBody UserRegistrationRequest request) {
-    UserDTO user = userService.registerUser(request);
-    return ResponseEntity.status(HttpStatus.CREATED).body(user);
-}
-```
-
-**Request Body:**
-```json
+Response 200:
 {
-  "email": "user@example.com",
-  "password": "SecurePass123!",
-  "firstName": "John",
-  "lastName": "Doe"
-}
-```
-
-**Response:**
-```json
-{
-  "id": 1,
-  "email": "user@example.com",
-  "firstName": "John",
-  "lastName": "Doe",
-  "role": "CUSTOMER",
-  "createdAt": "2024-01-15T10:30:00"
-}
-```
-
-#### 4.1.2 User Login
-
-```java
-@PostMapping("/api/users/login")
-public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-    AuthResponse response = userService.authenticateUser(request);
-    return ResponseEntity.ok(response);
-}
-```
-
-**Request Body:**
-```json
-{
-  "email": "user@example.com",
-  "password": "SecurePass123!"
-}
-```
-
-**Response:**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "type": "Bearer",
-  "expiresIn": 3600,
-  "user": {
-    "id": 1,
-    "email": "user@example.com",
-    "firstName": "John",
-    "lastName": "Doe",
-    "role": "CUSTOMER"
+  "success": true,
+  "data": {
+    "cartId": "uuid",
+    "userId": "uuid",
+    "items": [],
+    "metadata": {
+      "subtotal": 0,
+      "grandTotal": 0,
+      "itemCount": 0
+    }
   }
 }
 ```
 
-### 4.2 Product Management APIs
-
-#### 4.2.1 Get All Products
-
-```java
-@GetMapping("/api/products")
-public ResponseEntity<Page<ProductDTO>> getAllProducts(
-    @RequestParam(defaultValue = "0") int page,
-    @RequestParam(defaultValue = "10") int size,
-    @RequestParam(required = false) String category,
-    @RequestParam(required = false) String search
-) {
-    Pageable pageable = PageRequest.of(page, size);
-    Page<ProductDTO> products = productService.getAllProducts(pageable, category, search);
-    return ResponseEntity.ok(products);
-}
+##### 4.1.2 Add Item to Cart
 ```
+POST /api/v1/cart/items
+Headers:
+  Authorization: Bearer {token}
+  Content-Type: application/json
 
-**Response:**
-```json
+Request Body:
 {
-  "content": [
-    {
-      "id": 1,
-      "name": "Laptop",
-      "description": "High-performance laptop",
-      "price": 999.99,
-      "stock": 50,
-      "category": "Electronics",
-      "imageUrl": "https://example.com/laptop.jpg"
-    }
-  ],
-  "pageable": {
-    "pageNumber": 0,
-    "pageSize": 10
+  "productId": "uuid",
+  "sku": "string",
+  "quantity": 1
+}
+
+Response 201:
+{
+  "success": true,
+  "data": {
+    "cartItemId": "uuid",
+    "productId": "uuid",
+    "quantity": 1,
+    "unitPrice": 99.99,
+    "totalPrice": 99.99
   },
-  "totalElements": 100,
-  "totalPages": 10
+  "message": "Item added to cart successfully"
 }
-```
 
-#### 4.2.2 Create Product (Admin Only)
-
-```java
-@PostMapping("/api/products")
-@PreAuthorize("hasRole('ADMIN')")
-public ResponseEntity<ProductDTO> createProduct(@Valid @RequestBody ProductRequest request) {
-    ProductDTO product = productService.createProduct(request);
-    return ResponseEntity.status(HttpStatus.CREATED).body(product);
-}
-```
-
-### 4.3 Order Management APIs
-
-#### 4.3.1 Create Order
-
-```java
-@PostMapping("/api/orders")
-public ResponseEntity<OrderDTO> createOrder(
-    @Valid @RequestBody OrderRequest request,
-    @AuthenticationPrincipal UserDetails userDetails
-) {
-    OrderDTO order = orderService.createOrder(request, userDetails.getUsername());
-    return ResponseEntity.status(HttpStatus.CREATED).body(order);
-}
-```
-
-**Request Body:**
-```json
+Error Response 400:
 {
-  "items": [
-    {
-      "productId": 1,
-      "quantity": 2
-    },
-    {
-      "productId": 3,
-      "quantity": 1
-    }
-  ],
-  "shippingAddress": "123 Main St, City, State 12345"
-}
-```
-
-**Response:**
-```json
-{
-  "id": 1001,
-  "orderDate": "2024-01-15T14:30:00",
-  "status": "PENDING",
-  "totalAmount": 2999.97,
-  "items": [
-    {
-      "productId": 1,
-      "productName": "Laptop",
-      "quantity": 2,
-      "price": 999.99,
-      "subtotal": 1999.98
-    },
-    {
-      "productId": 3,
-      "productName": "Mouse",
-      "quantity": 1,
-      "price": 999.99,
-      "subtotal": 999.99
-    }
-  ],
-  "shippingAddress": "123 Main St, City, State 12345"
-}
-```
-
-#### 4.3.2 Get Order by ID
-
-```java
-@GetMapping("/api/orders/{orderId}")
-public ResponseEntity<OrderDTO> getOrder(
-    @PathVariable Long orderId,
-    @AuthenticationPrincipal UserDetails userDetails
-) {
-    OrderDTO order = orderService.getOrderById(orderId, userDetails.getUsername());
-    return ResponseEntity.ok(order);
-}
-```
-
-### 4.4 Payment APIs
-
-#### 4.4.1 Process Payment
-
-```java
-@PostMapping("/api/payments")
-public ResponseEntity<PaymentDTO> processPayment(
-    @Valid @RequestBody PaymentRequest request,
-    @AuthenticationPrincipal UserDetails userDetails
-) {
-    PaymentDTO payment = paymentService.processPayment(request, userDetails.getUsername());
-    return ResponseEntity.ok(payment);
-}
-```
-
-**Request Body:**
-```json
-{
-  "orderId": 1001,
-  "method": "CREDIT_CARD",
-  "cardDetails": {
-    "cardNumber": "4111111111111111",
-    "expiryMonth": 12,
-    "expiryYear": 2025,
-    "cvv": "123"
+  "success": false,
+  "error": {
+    "code": "INSUFFICIENT_STOCK",
+    "message": "Requested quantity not available"
   }
 }
 ```
 
-**Response:**
-```json
+##### 4.1.3 Update Cart Item Quantity
+```
+PUT /api/v1/cart/items/{cartItemId}
+Headers:
+  Authorization: Bearer {token}
+  Content-Type: application/json
+
+Request Body:
 {
-  "id": 5001,
-  "orderId": 1001,
-  "amount": 2999.97,
-  "method": "CREDIT_CARD",
-  "status": "COMPLETED",
-  "transactionId": "TXN123456789",
-  "timestamp": "2024-01-15T14:35:00"
+  "quantity": 3
+}
+
+Response 200:
+{
+  "success": true,
+  "data": {
+    "cartItemId": "uuid",
+    "quantity": 3,
+    "totalPrice": 299.97
+  }
 }
 ```
 
-## 5. Service Layer Implementation
+##### 4.1.4 Remove Item from Cart
+```
+DELETE /api/v1/cart/items/{cartItemId}
+Headers:
+  Authorization: Bearer {token}
 
-### 5.1 UserService
-
-```java
-@Service
-@Transactional
-public class UserService {
-    
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtTokenProvider tokenProvider;
-    
-    public UserService(UserRepository userRepository, 
-                      PasswordEncoder passwordEncoder,
-                      JwtTokenProvider tokenProvider) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.tokenProvider = tokenProvider;
-    }
-    
-    public UserDTO registerUser(UserRegistrationRequest request) {
-        // Validate email uniqueness
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new BusinessException("Email already registered");
-        }
-        
-        // Create user entity
-        User user = new User();
-        user.setEmail(request.getEmail());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setFirstName(request.getFirstName());
-        user.setLastName(request.getLastName());
-        user.setRole(UserRole.CUSTOMER);
-        
-        // Save user
-        User savedUser = userRepository.save(user);
-        
-        // Convert to DTO and return
-        return convertToDTO(savedUser);
-    }
-    
-    public AuthResponse authenticateUser(LoginRequest request) {
-        // Find user by email
-        User user = userRepository.findByEmail(request.getEmail())
-            .orElseThrow(() -> new BusinessException("Invalid credentials"));
-        
-        // Verify password
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new BusinessException("Invalid credentials");
-        }
-        
-        // Generate JWT token
-        String token = tokenProvider.generateToken(user.getEmail(), user.getRole());
-        
-        // Create response
-        AuthResponse response = new AuthResponse();
-        response.setToken(token);
-        response.setType("Bearer");
-        response.setExpiresIn(3600);
-        response.setUser(convertToDTO(user));
-        
-        return response;
-    }
-    
-    private UserDTO convertToDTO(User user) {
-        UserDTO dto = new UserDTO();
-        dto.setId(user.getId());
-        dto.setEmail(user.getEmail());
-        dto.setFirstName(user.getFirstName());
-        dto.setLastName(user.getLastName());
-        dto.setRole(user.getRole());
-        dto.setCreatedAt(user.getCreatedAt());
-        return dto;
-    }
+Response 200:
+{
+  "success": true,
+  "message": "Item removed from cart"
 }
 ```
 
-### 5.2 ProductService
+##### 4.1.5 Apply Coupon
+```
+POST /api/v1/cart/coupon
+Headers:
+  Authorization: Bearer {token}
+  Content-Type: application/json
 
-```java
-@Service
-@Transactional(readOnly = true)
-public class ProductService {
-    
-    private final ProductRepository productRepository;
-    private final CategoryRepository categoryRepository;
-    
-    public ProductService(ProductRepository productRepository,
-                         CategoryRepository categoryRepository) {
-        this.productRepository = productRepository;
-        this.categoryRepository = categoryRepository;
-    }
-    
-    public Page<ProductDTO> getAllProducts(Pageable pageable, String category, String search) {
-        Page<Product> products;
-        
-        if (search != null && !search.isEmpty()) {
-            products = productRepository.searchProducts(search, pageable);
-        } else if (category != null && !category.isEmpty()) {
-            products = productRepository.findByCategoryName(category, pageable);
-        } else {
-            products = productRepository.findAll(pageable);
-        }
-        
-        return products.map(this::convertToDTO);
-    }
-    
-    @Transactional
-    public ProductDTO createProduct(ProductRequest request) {
-        // Validate category
-        Category category = categoryRepository.findById(request.getCategoryId())
-            .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
-        
-        // Create product
-        Product product = new Product();
-        product.setName(request.getName());
-        product.setDescription(request.getDescription());
-        product.setPrice(request.getPrice());
-        product.setStock(request.getStock());
-        product.setCategory(category);
-        product.setImageUrl(request.getImageUrl());
-        
-        // Save product
-        Product savedProduct = productRepository.save(product);
-        
-        return convertToDTO(savedProduct);
-    }
-    
-    @Transactional
-    public void updateStock(Long productId, int quantity) {
-        Product product = productRepository.findById(productId)
-            .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-        
-        int newStock = product.getStock() - quantity;
-        if (newStock < 0) {
-            throw new BusinessException("Insufficient stock");
-        }
-        
-        product.setStock(newStock);
-        productRepository.save(product);
-    }
-    
-    private ProductDTO convertToDTO(Product product) {
-        ProductDTO dto = new ProductDTO();
-        dto.setId(product.getId());
-        dto.setName(product.getName());
-        dto.setDescription(product.getDescription());
-        dto.setPrice(product.getPrice());
-        dto.setStock(product.getStock());
-        dto.setCategory(product.getCategory().getName());
-        dto.setImageUrl(product.getImageUrl());
-        return dto;
-    }
+Request Body:
+{
+  "couponCode": "SUMMER2024"
+}
+
+Response 200:
+{
+  "success": true,
+  "data": {
+    "discountAmount": 15.00,
+    "newGrandTotal": 284.97
+  }
 }
 ```
 
-### 5.3 OrderService
+##### 4.1.6 Clear Cart
+```
+DELETE /api/v1/cart
+Headers:
+  Authorization: Bearer {token}
 
-```java
-@Service
-@Transactional
-public class OrderService {
-    
-    private final OrderRepository orderRepository;
-    private final UserRepository userRepository;
-    private final ProductService productService;
-    
-    public OrderService(OrderRepository orderRepository,
-                       UserRepository userRepository,
-                       ProductService productService) {
-        this.orderRepository = orderRepository;
-        this.userRepository = userRepository;
+Response 200:
+{
+  "success": true,
+  "message": "Cart cleared successfully"
+}
+```
+
+---
+
+### 5. Business Logic Components
+
+#### 5.1 Cart Service Class
+
+```javascript
+class CartService {
+    constructor(cartRepository, productService, pricingService, inventoryService) {
+        this.cartRepository = cartRepository;
         this.productService = productService;
+        this.pricingService = pricingService;
+        this.inventoryService = inventoryService;
     }
-    
-    public OrderDTO createOrder(OrderRequest request, String userEmail) {
-        // Find user
-        User user = userRepository.findByEmail(userEmail)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        
-        // Create order
-        Order order = new Order();
-        order.setUser(user);
-        order.setStatus(OrderStatus.PENDING);
-        order.setShippingAddress(request.getShippingAddress());
-        
-        // Process order items
-        List<OrderItem> orderItems = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
-        
-        for (OrderItemRequest itemRequest : request.getItems()) {
-            // Get product
-            Product product = productService.getProductEntity(itemRequest.getProductId());
+
+    async getOrCreateCart(userId, sessionId) {
+        try {
+            let cart = await this.cartRepository.findActiveCart(userId, sessionId);
             
-            // Validate stock
-            if (product.getStock() < itemRequest.getQuantity()) {
-                throw new BusinessException("Insufficient stock for product: " + product.getName());
+            if (!cart) {
+                cart = await this.cartRepository.createCart({
+                    userId,
+                    sessionId,
+                    status: 'active',
+                    expiresAt: this.calculateExpiry()
+                });
             }
             
-            // Create order item
-            OrderItem orderItem = new OrderItem();
-            orderItem.setOrder(order);
-            orderItem.setProduct(product);
-            orderItem.setQuantity(itemRequest.getQuantity());
-            orderItem.setPrice(product.getPrice());
-            
-            orderItems.add(orderItem);
-            totalAmount = totalAmount.add(orderItem.getSubtotal());
-            
-            // Update product stock
-            productService.updateStock(product.getId(), itemRequest.getQuantity());
+            return await this.enrichCartWithDetails(cart);
+        } catch (error) {
+            throw new CartServiceError('Failed to get or create cart', error);
         }
-        
-        order.setOrderItems(orderItems);
-        order.setTotalAmount(totalAmount);
-        
-        // Save order
-        Order savedOrder = orderRepository.save(order);
-        
-        return convertToDTO(savedOrder);
     }
-    
-    @Transactional(readOnly = true)
-    public OrderDTO getOrderById(Long orderId, String userEmail) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+    async addItemToCart(userId, sessionId, itemData) {
+        const { productId, sku, quantity } = itemData;
         
-        // Verify order belongs to user
-        if (!order.getUser().getEmail().equals(userEmail)) {
-            throw new BusinessException("Unauthorized access to order");
+        // Validate product exists
+        const product = await this.productService.getProduct(productId);
+        if (!product) {
+            throw new ValidationError('Product not found');
         }
+
+        // Check inventory
+        const available = await this.inventoryService.checkAvailability(sku, quantity);
+        if (!available) {
+            throw new InsufficientStockError('Requested quantity not available');
+        }
+
+        // Get current price
+        const pricing = await this.pricingService.getPrice(productId, sku);
         
-        return convertToDTO(order);
+        const cart = await this.getOrCreateCart(userId, sessionId);
+        
+        // Check if item already exists in cart
+        const existingItem = await this.cartRepository.findCartItem(cart.cartId, productId, sku);
+        
+        let cartItem;
+        if (existingItem) {
+            const newQuantity = existingItem.quantity + quantity;
+            cartItem = await this.updateCartItemQuantity(existingItem.cartItemId, newQuantity);
+        } else {
+            cartItem = await this.cartRepository.addCartItem({
+                cartId: cart.cartId,
+                productId,
+                sku,
+                quantity,
+                unitPrice: pricing.price,
+                discountAmount: 0,
+                taxAmount: this.calculateTax(pricing.price, quantity),
+                totalPrice: this.calculateItemTotal(pricing.price, quantity)
+            });
+        }
+
+        // Update cart metadata
+        await this.updateCartMetadata(cart.cartId);
+        
+        // Invalidate cache
+        await this.invalidateCartCache(cart.cartId);
+        
+        return cartItem;
     }
-    
-    public void updateOrderStatus(Long orderId, OrderStatus status) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        
-        order.setStatus(status);
-        orderRepository.save(order);
+
+    async updateCartItemQuantity(cartItemId, newQuantity) {
+        if (newQuantity <= 0) {
+            throw new ValidationError('Quantity must be greater than 0');
+        }
+
+        const cartItem = await this.cartRepository.getCartItem(cartItemId);
+        if (!cartItem) {
+            throw new NotFoundError('Cart item not found');
+        }
+
+        // Check inventory for new quantity
+        const available = await this.inventoryService.checkAvailability(
+            cartItem.sku, 
+            newQuantity
+        );
+        if (!available) {
+            throw new InsufficientStockError('Requested quantity not available');
+        }
+
+        // Recalculate prices
+        const newTotalPrice = this.calculateItemTotal(cartItem.unitPrice, newQuantity);
+        const newTaxAmount = this.calculateTax(cartItem.unitPrice, newQuantity);
+
+        const updatedItem = await this.cartRepository.updateCartItem(cartItemId, {
+            quantity: newQuantity,
+            taxAmount: newTaxAmount,
+            totalPrice: newTotalPrice
+        });
+
+        // Update cart metadata
+        await this.updateCartMetadata(cartItem.cartId);
+        await this.invalidateCartCache(cartItem.cartId);
+
+        return updatedItem;
     }
-    
-    private OrderDTO convertToDTO(Order order) {
-        OrderDTO dto = new OrderDTO();
-        dto.setId(order.getId());
-        dto.setOrderDate(order.getOrderDate());
-        dto.setStatus(order.getStatus());
-        dto.setTotalAmount(order.getTotalAmount());
-        dto.setShippingAddress(order.getShippingAddress());
-        
-        List<OrderItemDTO> itemDTOs = order.getOrderItems().stream()
-            .map(this::convertItemToDTO)
-            .collect(Collectors.toList());
-        dto.setItems(itemDTOs);
-        
-        return dto;
+
+    async removeItemFromCart(cartItemId) {
+        const cartItem = await this.cartRepository.getCartItem(cartItemId);
+        if (!cartItem) {
+            throw new NotFoundError('Cart item not found');
+        }
+
+        await this.cartRepository.deleteCartItem(cartItemId);
+        await this.updateCartMetadata(cartItem.cartId);
+        await this.invalidateCartCache(cartItem.cartId);
+
+        return { success: true };
     }
-    
-    private OrderItemDTO convertItemToDTO(OrderItem item) {
-        OrderItemDTO dto = new OrderItemDTO();
-        dto.setProductId(item.getProduct().getId());
-        dto.setProductName(item.getProduct().getName());
-        dto.setQuantity(item.getQuantity());
-        dto.setPrice(item.getPrice());
-        dto.setSubtotal(item.getSubtotal());
-        return dto;
+
+    async applyCoupon(cartId, couponCode) {
+        const cart = await this.cartRepository.getCart(cartId);
+        if (!cart) {
+            throw new NotFoundError('Cart not found');
+        }
+
+        // Validate coupon with pricing service
+        const couponDetails = await this.pricingService.validateCoupon(couponCode, cart);
+        if (!couponDetails.valid) {
+            throw new ValidationError('Invalid or expired coupon');
+        }
+
+        const discountAmount = this.calculateCouponDiscount(cart, couponDetails);
+        
+        await this.cartRepository.updateCartMetadata(cartId, {
+            couponCode,
+            discountTotal: discountAmount
+        });
+
+        await this.updateCartMetadata(cartId);
+        await this.invalidateCartCache(cartId);
+
+        return { discountAmount, newGrandTotal: cart.metadata.grandTotal - discountAmount };
+    }
+
+    async clearCart(cartId) {
+        await this.cartRepository.deleteAllCartItems(cartId);
+        await this.updateCartMetadata(cartId);
+        await this.invalidateCartCache(cartId);
+        return { success: true };
+    }
+
+    async updateCartMetadata(cartId) {
+        const items = await this.cartRepository.getCartItems(cartId);
+        
+        const subtotal = items.reduce((sum, item) => sum + parseFloat(item.totalPrice), 0);
+        const taxTotal = items.reduce((sum, item) => sum + parseFloat(item.taxAmount), 0);
+        const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+        
+        const metadata = await this.cartRepository.getCartMetadata(cartId);
+        const discountTotal = metadata?.discountTotal || 0;
+        const shippingCost = await this.calculateShipping(subtotal);
+        
+        const grandTotal = subtotal + taxTotal + shippingCost - discountTotal;
+
+        await this.cartRepository.updateCartMetadata(cartId, {
+            subtotal,
+            discountTotal,
+            taxTotal,
+            shippingCost,
+            grandTotal,
+            itemCount
+        });
+    }
+
+    calculateItemTotal(unitPrice, quantity) {
+        return (parseFloat(unitPrice) * quantity).toFixed(2);
+    }
+
+    calculateTax(unitPrice, quantity) {
+        const TAX_RATE = 0.08; // 8% tax
+        return (parseFloat(unitPrice) * quantity * TAX_RATE).toFixed(2);
+    }
+
+    async calculateShipping(subtotal) {
+        if (subtotal >= 50) return 0; // Free shipping over $50
+        return 5.99;
+    }
+
+    calculateExpiry() {
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 30); // 30 days
+        return expiryDate;
+    }
+
+    async enrichCartWithDetails(cart) {
+        const items = await this.cartRepository.getCartItems(cart.cartId);
+        const metadata = await this.cartRepository.getCartMetadata(cart.cartId);
+        
+        // Enrich items with product details
+        const enrichedItems = await Promise.all(
+            items.map(async (item) => {
+                const productDetails = await this.productService.getProduct(item.productId);
+                return { ...item, productDetails };
+            })
+        );
+
+        return {
+            ...cart,
+            items: enrichedItems,
+            metadata
+        };
+    }
+
+    async invalidateCartCache(cartId) {
+        // Implementation for cache invalidation
+        await this.cacheService.delete(`cart:${cartId}`);
     }
 }
 ```
 
-### 5.4 PaymentService
+#### 5.2 Cart Repository Class
 
-```java
-@Service
-@Transactional
-public class PaymentService {
-    
-    private final PaymentRepository paymentRepository;
-    private final OrderRepository orderRepository;
-    private final OrderService orderService;
-    
-    public PaymentService(PaymentRepository paymentRepository,
-                         OrderRepository orderRepository,
-                         OrderService orderService) {
-        this.paymentRepository = paymentRepository;
-        this.orderRepository = orderRepository;
-        this.orderService = orderService;
+```javascript
+class CartRepository {
+    constructor(database) {
+        this.db = database;
     }
-    
-    public PaymentDTO processPayment(PaymentRequest request, String userEmail) {
-        // Find order
-        Order order = orderRepository.findById(request.getOrderId())
-            .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        
-        // Verify order belongs to user
-        if (!order.getUser().getEmail().equals(userEmail)) {
-            throw new BusinessException("Unauthorized access to order");
-        }
-        
-        // Verify order status
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new BusinessException("Order is not in pending status");
-        }
-        
-        // Create payment
-        Payment payment = new Payment();
-        payment.setOrder(order);
-        payment.setAmount(order.getTotalAmount());
-        payment.setMethod(request.getMethod());
-        
-        try {
-            // Process payment with payment gateway
-            String transactionId = processWithPaymentGateway(request);
-            
-            payment.setStatus(PaymentStatus.COMPLETED);
-            payment.setTransactionId(transactionId);
-            
-            // Update order status
-            orderService.updateOrderStatus(order.getId(), OrderStatus.CONFIRMED);
-            
-        } catch (Exception e) {
-            payment.setStatus(PaymentStatus.FAILED);
-            throw new BusinessException("Payment processing failed: " + e.getMessage());
-        }
-        
-        // Save payment
-        Payment savedPayment = paymentRepository.save(payment);
-        
-        return convertToDTO(savedPayment);
+
+    async findActiveCart(userId, sessionId) {
+        const query = `
+            SELECT * FROM carts 
+            WHERE (user_id = $1 OR session_id = $2) 
+            AND status = 'active' 
+            AND expires_at > NOW()
+            ORDER BY updated_at DESC 
+            LIMIT 1
+        `;
+        const result = await this.db.query(query, [userId, sessionId]);
+        return result.rows[0];
     }
-    
-    private String processWithPaymentGateway(PaymentRequest request) {
-        // Integration with payment gateway
-        // This is a placeholder - actual implementation would call external API
-        return "TXN" + System.currentTimeMillis();
+
+    async createCart(cartData) {
+        const query = `
+            INSERT INTO carts (user_id, session_id, status, expires_at)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        `;
+        const values = [
+            cartData.userId,
+            cartData.sessionId,
+            cartData.status,
+            cartData.expiresAt
+        ];
+        const result = await this.db.query(query, values);
+        
+        // Initialize metadata
+        await this.initializeCartMetadata(result.rows[0].cart_id);
+        
+        return result.rows[0];
     }
-    
-    private PaymentDTO convertToDTO(Payment payment) {
-        PaymentDTO dto = new PaymentDTO();
-        dto.setId(payment.getId());
-        dto.setOrderId(payment.getOrder().getId());
-        dto.setAmount(payment.getAmount());
-        dto.setMethod(payment.getMethod());
-        dto.setStatus(payment.getStatus());
-        dto.setTransactionId(payment.getTransactionId());
-        dto.setTimestamp(payment.getTimestamp());
-        return dto;
+
+    async getCart(cartId) {
+        const query = 'SELECT * FROM carts WHERE cart_id = $1';
+        const result = await this.db.query(query, [cartId]);
+        return result.rows[0];
+    }
+
+    async addCartItem(itemData) {
+        const query = `
+            INSERT INTO cart_items 
+            (cart_id, product_id, sku, quantity, unit_price, discount_amount, tax_amount, total_price)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING *
+        `;
+        const values = [
+            itemData.cartId,
+            itemData.productId,
+            itemData.sku,
+            itemData.quantity,
+            itemData.unitPrice,
+            itemData.discountAmount,
+            itemData.taxAmount,
+            itemData.totalPrice
+        ];
+        const result = await this.db.query(query, values);
+        return result.rows[0];
+    }
+
+    async findCartItem(cartId, productId, sku) {
+        const query = `
+            SELECT * FROM cart_items 
+            WHERE cart_id = $1 AND product_id = $2 AND sku = $3
+        `;
+        const result = await this.db.query(query, [cartId, productId, sku]);
+        return result.rows[0];
+    }
+
+    async getCartItem(cartItemId) {
+        const query = 'SELECT * FROM cart_items WHERE cart_item_id = $1';
+        const result = await this.db.query(query, [cartItemId]);
+        return result.rows[0];
+    }
+
+    async getCartItems(cartId) {
+        const query = 'SELECT * FROM cart_items WHERE cart_id = $1 ORDER BY added_at DESC';
+        const result = await this.db.query(query, [cartId]);
+        return result.rows;
+    }
+
+    async updateCartItem(cartItemId, updates) {
+        const query = `
+            UPDATE cart_items 
+            SET quantity = $1, tax_amount = $2, total_price = $3, updated_at = NOW()
+            WHERE cart_item_id = $4
+            RETURNING *
+        `;
+        const values = [
+            updates.quantity,
+            updates.taxAmount,
+            updates.totalPrice,
+            cartItemId
+        ];
+        const result = await this.db.query(query, values);
+        return result.rows[0];
+    }
+
+    async deleteCartItem(cartItemId) {
+        const query = 'DELETE FROM cart_items WHERE cart_item_id = $1';
+        await this.db.query(query, [cartItemId]);
+    }
+
+    async deleteAllCartItems(cartId) {
+        const query = 'DELETE FROM cart_items WHERE cart_id = $1';
+        await this.db.query(query, [cartId]);
+    }
+
+    async initializeCartMetadata(cartId) {
+        const query = `
+            INSERT INTO cart_metadata (cart_id, subtotal, grand_total, item_count)
+            VALUES ($1, 0, 0, 0)
+        `;
+        await this.db.query(query, [cartId]);
+    }
+
+    async getCartMetadata(cartId) {
+        const query = 'SELECT * FROM cart_metadata WHERE cart_id = $1';
+        const result = await this.db.query(query, [cartId]);
+        return result.rows[0];
+    }
+
+    async updateCartMetadata(cartId, metadata) {
+        const query = `
+            UPDATE cart_metadata 
+            SET subtotal = $1, discount_total = $2, tax_total = $3, 
+                shipping_cost = $4, grand_total = $5, item_count = $6, 
+                coupon_code = $7, updated_at = NOW()
+            WHERE cart_id = $8
+        `;
+        const values = [
+            metadata.subtotal,
+            metadata.discountTotal || 0,
+            metadata.taxTotal,
+            metadata.shippingCost,
+            metadata.grandTotal,
+            metadata.itemCount,
+            metadata.couponCode || null,
+            cartId
+        ];
+        await this.db.query(query, values);
     }
 }
 ```
 
-## 6. Security Implementation
+---
 
-### 6.1 JWT Token Provider
+### 6. Integration Points
 
-```java
-@Component
-public class JwtTokenProvider {
-    
-    @Value("${jwt.secret}")
-    private String jwtSecret;
-    
-    @Value("${jwt.expiration}")
-    private long jwtExpiration;
-    
-    public String generateToken(String email, UserRole role) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtExpiration);
-        
-        return Jwts.builder()
-            .setSubject(email)
-            .claim("role", role.name())
-            .setIssuedAt(now)
-            .setExpiration(expiryDate)
-            .signWith(SignatureAlgorithm.HS512, jwtSecret)
-            .compact();
+#### 6.1 Product Service Integration
+
+```javascript
+class ProductServiceClient {
+    constructor(baseUrl, apiKey) {
+        this.baseUrl = baseUrl;
+        this.apiKey = apiKey;
     }
-    
-    public String getEmailFromToken(String token) {
-        Claims claims = Jwts.parser()
-            .setSigningKey(jwtSecret)
-            .parseClaimsJws(token)
-            .getBody();
-        
-        return claims.getSubject();
-    }
-    
-    public boolean validateToken(String token) {
+
+    async getProduct(productId) {
         try {
-            Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
+            const response = await axios.get(
+                `${this.baseUrl}/api/v1/products/${productId}`,
+                {
+                    headers: { 'X-API-Key': this.apiKey }
+                }
+            );
+            return response.data;
+        } catch (error) {
+            throw new ServiceIntegrationError('Product service unavailable', error);
+        }
+    }
+
+    async validateProduct(productId, sku) {
+        const product = await this.getProduct(productId);
+        return product && product.skus.includes(sku);
+    }
+}
+```
+
+#### 6.2 Inventory Service Integration
+
+```javascript
+class InventoryServiceClient {
+    constructor(baseUrl, apiKey) {
+        this.baseUrl = baseUrl;
+        this.apiKey = apiKey;
+    }
+
+    async checkAvailability(sku, quantity) {
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/api/v1/inventory/check`,
+                { sku, quantity },
+                {
+                    headers: { 'X-API-Key': this.apiKey }
+                }
+            );
+            return response.data.available;
+        } catch (error) {
+            throw new ServiceIntegrationError('Inventory service unavailable', error);
+        }
+    }
+
+    async reserveInventory(sku, quantity, cartId) {
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/api/v1/inventory/reserve`,
+                { sku, quantity, referenceId: cartId },
+                {
+                    headers: { 'X-API-Key': this.apiKey }
+                }
+            );
+            return response.data;
+        } catch (error) {
+            throw new ServiceIntegrationError('Failed to reserve inventory', error);
         }
     }
 }
 ```
 
-### 6.2 JWT Authentication Filter
+#### 6.3 Pricing Service Integration
 
-```java
-@Component
-public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    
-    private final JwtTokenProvider tokenProvider;
-    private final CustomUserDetailsService userDetailsService;
-    
-    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider,
-                                  CustomUserDetailsService userDetailsService) {
-        this.tokenProvider = tokenProvider;
-        this.userDetailsService = userDetailsService;
+```javascript
+class PricingServiceClient {
+    constructor(baseUrl, apiKey) {
+        this.baseUrl = baseUrl;
+        this.apiKey = apiKey;
     }
-    
-    @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                   HttpServletResponse response,
-                                   FilterChain filterChain) throws ServletException, IOException {
+
+    async getPrice(productId, sku) {
         try {
-            String jwt = getJwtFromRequest(request);
-            
-            if (jwt != null && tokenProvider.validateToken(jwt)) {
-                String email = tokenProvider.getEmailFromToken(jwt);
-                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-                
-                UsernamePasswordAuthenticationToken authentication = 
-                    new UsernamePasswordAuthenticationToken(
-                        userDetails, null, userDetails.getAuthorities());
-                
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+            const response = await axios.get(
+                `${this.baseUrl}/api/v1/pricing/${productId}/${sku}`,
+                {
+                    headers: { 'X-API-Key': this.apiKey }
+                }
+            );
+            return response.data;
+        } catch (error) {
+            throw new ServiceIntegrationError('Pricing service unavailable', error);
+        }
+    }
+
+    async validateCoupon(couponCode, cart) {
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/api/v1/coupons/validate`,
+                { couponCode, cartTotal: cart.metadata.subtotal },
+                {
+                    headers: { 'X-API-Key': this.apiKey }
+                }
+            );
+            return response.data;
+        } catch (error) {
+            throw new ServiceIntegrationError('Coupon validation failed', error);
+        }
+    }
+}
+```
+
+---
+
+### 7. Error Handling
+
+#### 7.1 Custom Error Classes
+
+```javascript
+class CartServiceError extends Error {
+    constructor(message, originalError) {
+        super(message);
+        this.name = 'CartServiceError';
+        this.originalError = originalError;
+        this.statusCode = 500;
+    }
+}
+
+class ValidationError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'ValidationError';
+        this.statusCode = 400;
+    }
+}
+
+class NotFoundError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'NotFoundError';
+        this.statusCode = 404;
+    }
+}
+
+class InsufficientStockError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'InsufficientStockError';
+        this.statusCode = 400;
+        this.code = 'INSUFFICIENT_STOCK';
+    }
+}
+
+class ServiceIntegrationError extends Error {
+    constructor(message, originalError) {
+        super(message);
+        this.name = 'ServiceIntegrationError';
+        this.originalError = originalError;
+        this.statusCode = 503;
+    }
+}
+```
+
+#### 7.2 Error Handler Middleware
+
+```javascript
+const errorHandler = (err, req, res, next) => {
+    console.error('Error:', err);
+
+    const statusCode = err.statusCode || 500;
+    const response = {
+        success: false,
+        error: {
+            code: err.code || err.name,
+            message: err.message
+        }
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+        response.error.stack = err.stack;
+        if (err.originalError) {
+            response.error.originalError = err.originalError.message;
+        }
+    }
+
+    res.status(statusCode).json(response);
+};
+```
+
+---
+
+### 8. Caching Strategy
+
+#### 8.1 Redis Cache Implementation
+
+```javascript
+class CacheService {
+    constructor(redisClient) {
+        this.redis = redisClient;
+        this.DEFAULT_TTL = 3600; // 1 hour
+    }
+
+    async get(key) {
+        try {
+            const data = await this.redis.get(key);
+            return data ? JSON.parse(data) : null;
+        } catch (error) {
+            console.error('Cache get error:', error);
+            return null;
+        }
+    }
+
+    async set(key, value, ttl = this.DEFAULT_TTL) {
+        try {
+            await this.redis.setex(key, ttl, JSON.stringify(value));
+        } catch (error) {
+            console.error('Cache set error:', error);
+        }
+    }
+
+    async delete(key) {
+        try {
+            await this.redis.del(key);
+        } catch (error) {
+            console.error('Cache delete error:', error);
+        }
+    }
+
+    async deletePattern(pattern) {
+        try {
+            const keys = await this.redis.keys(pattern);
+            if (keys.length > 0) {
+                await this.redis.del(...keys);
             }
-        } catch (Exception e) {
-            logger.error("Could not set user authentication in security context", e);
+        } catch (error) {
+            console.error('Cache delete pattern error:', error);
         }
-        
-        filterChain.doFilter(request, response);
     }
-    
-    private String getJwtFromRequest(HttpServletRequest request) {
-        String bearerToken = request.getHeader("Authorization");
-        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
+}
+```
+
+#### 8.2 Cache Keys and Strategy
+
+```javascript
+const CACHE_KEYS = {
+    CART: (cartId) => `cart:${cartId}`,
+    USER_CART: (userId) => `user:cart:${userId}`,
+    CART_ITEMS: (cartId) => `cart:items:${cartId}`,
+    PRODUCT: (productId) => `product:${productId}`,
+    PRICE: (productId, sku) => `price:${productId}:${sku}`
+};
+
+// Cache-aside pattern implementation
+class CachedCartService extends CartService {
+    constructor(cartRepository, productService, pricingService, inventoryService, cacheService) {
+        super(cartRepository, productService, pricingService, inventoryService);
+        this.cache = cacheService;
+    }
+
+    async getOrCreateCart(userId, sessionId) {
+        const cacheKey = CACHE_KEYS.USER_CART(userId);
+        let cart = await this.cache.get(cacheKey);
+
+        if (!cart) {
+            cart = await super.getOrCreateCart(userId, sessionId);
+            await this.cache.set(cacheKey, cart, 1800); // 30 minutes
         }
-        return null;
+
+        return cart;
+    }
+
+    async invalidateCartCache(cartId) {
+        await this.cache.delete(CACHE_KEYS.CART(cartId));
+        await this.cache.deletePattern(`user:cart:*`);
     }
 }
 ```
 
-### 6.3 Security Configuration
+---
 
-```java
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity
-public class SecurityConfig {
-    
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final CustomUserDetailsService userDetailsService;
-    
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                         CustomUserDetailsService userDetailsService) {
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
-        this.userDetailsService = userDetailsService;
+### 9. Security Considerations
+
+#### 9.1 Authentication & Authorization
+
+```javascript
+const authMiddleware = async (req, res, next) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ error: 'No token provided' });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (error) {
+        return res.status(401).json({ error: 'Invalid token' });
     }
-    
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> 
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/users/register", "/api/users/login").permitAll()
-                .requestMatchers("/api/products/**").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+};
+
+const cartOwnershipMiddleware = async (req, res, next) => {
+    try {
+        const cartId = req.params.cartId || req.body.cartId;
+        const cart = await cartRepository.getCart(cartId);
         
-        return http.build();
+        if (!cart) {
+            return res.status(404).json({ error: 'Cart not found' });
+        }
+
+        if (cart.user_id !== req.user.userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        next();
+    } catch (error) {
+        next(error);
     }
-    
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-    
-    @Bean
-    public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration authConfig) throws Exception {
-        return authConfig.getAuthenticationManager();
-    }
-}
+};
 ```
 
-## 7. Exception Handling
+#### 9.2 Input Validation
 
-### 7.1 Global Exception Handler
+```javascript
+const { body, param, validationResult } = require('express-validator');
 
-```java
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-    
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
-            ResourceNotFoundException ex, WebRequest request) {
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.NOT_FOUND.value(),
-            ex.getMessage(),
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
+const addItemValidation = [
+    body('productId').isUUID().withMessage('Invalid product ID'),
+    body('sku').isString().trim().notEmpty().withMessage('SKU is required'),
+    body('quantity').isInt({ min: 1, max: 99 }).withMessage('Quantity must be between 1 and 99'),
+    (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        next();
     }
-    
-    @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusinessException(
-            BusinessException ex, WebRequest request) {
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.BAD_REQUEST.value(),
-            ex.getMessage(),
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+];
+
+const updateQuantityValidation = [
+    param('cartItemId').isUUID().withMessage('Invalid cart item ID'),
+    body('quantity').isInt({ min: 1, max: 99 }).withMessage('Quantity must be between 1 and 99'),
+    (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        next();
     }
-    
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(
-            MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getFieldErrors().forEach(error -> 
-            errors.put(error.getField(), error.getDefaultMessage())
-        );
-        
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.BAD_REQUEST.value(),
-            "Validation failed",
-            LocalDateTime.now(),
-            errors
-        );
-        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
-    }
-    
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGlobalException(
-            Exception ex, WebRequest request) {
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.INTERNAL_SERVER_ERROR.value(),
-            "An unexpected error occurred",
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-}
+];
 ```
 
-### 7.2 Custom Exceptions
+#### 9.3 Rate Limiting
 
-```java
-public class ResourceNotFoundException extends RuntimeException {
-    public ResourceNotFoundException(String message) {
-        super(message);
-    }
-}
+```javascript
+const rateLimit = require('express-rate-limit');
 
-public class BusinessException extends RuntimeException {
-    public BusinessException(String message) {
-        super(message);
-    }
-}
+const cartApiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later'
+});
 
-@Data
-@AllArgsConstructor
-public class ErrorResponse {
-    private int status;
-    private String message;
-    private LocalDateTime timestamp;
-    private Map<String, String> errors;
-    
-    public ErrorResponse(int status, String message, LocalDateTime timestamp) {
-        this.status = status;
-        this.message = message;
-        this.timestamp = timestamp;
-    }
-}
+const addItemLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 10, // limit each IP to 10 add item requests per minute
+    message: 'Too many items added, please slow down'
+});
 ```
 
-## 8. Performance Considerations
+---
 
-### 8.1 Database Optimization
+### 10. Testing Strategy
 
-#### 8.1.1 Indexing Strategy
+#### 10.1 Unit Tests
+
+```javascript
+const { expect } = require('chai');
+const sinon = require('sinon');
+const CartService = require('../services/CartService');
+
+describe('CartService', () => {
+    let cartService;
+    let mockCartRepository;
+    let mockProductService;
+    let mockPricingService;
+    let mockInventoryService;
+
+    beforeEach(() => {
+        mockCartRepository = {
+            findActiveCart: sinon.stub(),
+            createCart: sinon.stub(),
+            addCartItem: sinon.stub(),
+            getCartItems: sinon.stub(),
+            updateCartMetadata: sinon.stub()
+        };
+
+        mockProductService = {
+            getProduct: sinon.stub()
+        };
+
+        mockPricingService = {
+            getPrice: sinon.stub()
+        };
+
+        mockInventoryService = {
+            checkAvailability: sinon.stub()
+        };
+
+        cartService = new CartService(
+            mockCartRepository,
+            mockProductService,
+            mockPricingService,
+            mockInventoryService
+        );
+    });
+
+    describe('addItemToCart', () => {
+        it('should add item to cart successfully', async () => {
+            const userId = 'user-123';
+            const sessionId = 'session-456';
+            const itemData = {
+                productId: 'product-789',
+                sku: 'SKU-001',
+                quantity: 2
+            };
+
+            mockCartRepository.findActiveCart.resolves({
+                cart_id: 'cart-123',
+                user_id: userId
+            });
+
+            mockProductService.getProduct.resolves({
+                product_id: 'product-789',
+                name: 'Test Product'
+            });
+
+            mockInventoryService.checkAvailability.resolves(true);
+
+            mockPricingService.getPrice.resolves({
+                price: 99.99
+            });
+
+            mockCartRepository.findCartItem.resolves(null);
+            mockCartRepository.addCartItem.resolves({
+                cart_item_id: 'item-123',
+                quantity: 2,
+                total_price: 199.98
+            });
+
+            const result = await cartService.addItemToCart(userId, sessionId, itemData);
+
+            expect(result).to.have.property('cart_item_id');
+            expect(mockCartRepository.addCartItem.calledOnce).to.be.true;
+        });
+
+        it('should throw error when product not found', async () => {
+            mockProductService.getProduct.resolves(null);
+
+            try {
+                await cartService.addItemToCart('user-123', 'session-456', {
+                    productId: 'invalid',
+                    sku: 'SKU-001',
+                    quantity: 1
+                });
+                expect.fail('Should have thrown error');
+            } catch (error) {
+                expect(error.message).to.equal('Product not found');
+            }
+        });
+
+        it('should throw error when insufficient stock', async () => {
+            mockProductService.getProduct.resolves({ product_id: 'product-789' });
+            mockInventoryService.checkAvailability.resolves(false);
+
+            try {
+                await cartService.addItemToCart('user-123', 'session-456', {
+                    productId: 'product-789',
+                    sku: 'SKU-001',
+                    quantity: 100
+                });
+                expect.fail('Should have thrown error');
+            } catch (error) {
+                expect(error.message).to.equal('Requested quantity not available');
+            }
+        });
+    });
+
+    describe('calculateItemTotal', () => {
+        it('should calculate total correctly', () => {
+            const total = cartService.calculateItemTotal(99.99, 2);
+            expect(total).to.equal('199.98');
+        });
+    });
+
+    describe('calculateTax', () => {
+        it('should calculate tax at 8%', () => {
+            const tax = cartService.calculateTax(100, 1);
+            expect(tax).to.equal('8.00');
+        });
+    });
+});
+```
+
+#### 10.2 Integration Tests
+
+```javascript
+const request = require('supertest');
+const app = require('../app');
+const { expect } = require('chai');
+
+describe('Cart API Integration Tests', () => {
+    let authToken;
+    let cartId;
+
+    before(async () => {
+        // Setup: Login and get auth token
+        const loginResponse = await request(app)
+            .post('/api/v1/auth/login')
+            .send({
+                email: 'test@example.com',
+                password: 'password123'
+            });
+        authToken = loginResponse.body.token;
+    });
+
+    describe('GET /api/v1/cart', () => {
+        it('should get or create cart', async () => {
+            const response = await request(app)
+                .get('/api/v1/cart')
+                .set('Authorization', `Bearer ${authToken}`);
+
+            expect(response.status).to.equal(200);
+            expect(response.body).to.have.property('data');
+            expect(response.body.data).to.have.property('cartId');
+            cartId = response.body.data.cartId;
+        });
+    });
+
+    describe('POST /api/v1/cart/items', () => {
+        it('should add item to cart', async () => {
+            const response = await request(app)
+                .post('/api/v1/cart/items')
+                .set('Authorization', `Bearer ${authToken}`)
+                .send({
+                    productId: 'test-product-id',
+                    sku: 'TEST-SKU-001',
+                    quantity: 2
+                });
+
+            expect(response.status).to.equal(201);
+            expect(response.body.success).to.be.true;
+            expect(response.body.data).to.have.property('cartItemId');
+        });
+
+        it('should return 400 for invalid quantity', async () => {
+            const response = await request(app)
+                .post('/api/v1/cart/items')
+                .set('Authorization', `Bearer ${authToken}`)
+                .send({
+                    productId: 'test-product-id',
+                    sku: 'TEST-SKU-001',
+                    quantity: 0
+                });
+
+            expect(response.status).to.equal(400);
+        });
+    });
+});
+```
+
+---
+
+### 11. Deployment Configuration
+
+#### 11.1 Environment Variables
+
+```bash
+# .env.example
+NODE_ENV=production
+PORT=3000
+
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ecommerce
+DB_USER=cart_service
+DB_PASSWORD=secure_password
+DB_POOL_MIN=2
+DB_POOL_MAX=10
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=redis_password
+REDIS_DB=0
+
+# JWT
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRY=24h
+
+# External Services
+PRODUCT_SERVICE_URL=http://product-service:3001
+INVENTORY_SERVICE_URL=http://inventory-service:3002
+PRICING_SERVICE_URL=http://pricing-service:3003
+API_KEY=service_api_key
+
+# Logging
+LOG_LEVEL=info
+
+# Cart Configuration
+CART_EXPIRY_DAYS=30
+MAX_CART_ITEMS=50
+FREE_SHIPPING_THRESHOLD=50
+```
+
+#### 11.2 Docker Configuration
+
+```dockerfile
+# Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 3000
+
+USER node
+
+CMD ["node", "server.js"]
+```
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  cart-service:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=ecommerce
+      - POSTGRES_USER=cart_service
+      - POSTGRES_PASSWORD=secure_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass redis_password
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+---
+
+### 12. Monitoring and Logging
+
+#### 12.1 Logging Implementation
+
+```javascript
+const winston = require('winston');
+
+const logger = winston.createLogger({
+    level: process.env.LOG_LEVEL || 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+    ),
+    defaultMeta: { service: 'cart-service' },
+    transports: [
+        new winston.transports.File({ filename: 'error.log', level: 'error' }),
+        new winston.transports.File({ filename: 'combined.log' })
+    ]
+});
+
+if (process.env.NODE_ENV !== 'production') {
+    logger.add(new winston.transports.Console({
+        format: winston.format.simple()
+    }));
+}
+
+module.exports = logger;
+```
+
+#### 12.2 Metrics Collection
+
+```javascript
+const promClient = require('prom-client');
+
+const register = new promClient.Registry();
+
+// Default metrics
+promClient.collectDefaultMetrics({ register });
+
+// Custom metrics
+const httpRequestDuration = new promClient.Histogram({
+    name: 'http_request_duration_seconds',
+    help: 'Duration of HTTP requests in seconds',
+    labelNames: ['method', 'route', 'status_code'],
+    registers: [register]
+});
+
+const cartOperations = new promClient.Counter({
+    name: 'cart_operations_total',
+    help: 'Total number of cart operations',
+    labelNames: ['operation', 'status'],
+    registers: [register]
+});
+
+const activeCartsGauge = new promClient.Gauge({
+    name: 'active_carts_total',
+    help: 'Number of active carts',
+    registers: [register]
+});
+
+module.exports = {
+    register,
+    httpRequestDuration,
+    cartOperations,
+    activeCartsGauge
+};
+```
+
+---
+
+### 13. Performance Optimization
+
+#### 13.1 Database Indexing Strategy
 
 ```sql
--- User table indexes
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_role ON users(role);
+-- Indexes for optimal query performance
+CREATE INDEX CONCURRENTLY idx_carts_user_status ON carts(user_id, status) WHERE status = 'active';
+CREATE INDEX CONCURRENTLY idx_carts_session_status ON carts(session_id, status) WHERE status = 'active';
+CREATE INDEX CONCURRENTLY idx_carts_expires ON carts(expires_at) WHERE status = 'active';
 
--- Product table indexes
-CREATE INDEX idx_products_category ON products(category_id);
-CREATE INDEX idx_products_name ON products(name);
-CREATE INDEX idx_products_price ON products(price);
+CREATE INDEX CONCURRENTLY idx_cart_items_cart_product ON cart_items(cart_id, product_id);
+CREATE INDEX CONCURRENTLY idx_cart_items_product ON cart_items(product_id);
 
--- Order table indexes
-CREATE INDEX idx_orders_user ON orders(user_id);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_date ON orders(order_date);
+CREATE INDEX CONCURRENTLY idx_cart_metadata_cart ON cart_metadata(cart_id);
 
--- Payment table indexes
-CREATE INDEX idx_payments_order ON payments(order_id);
-CREATE INDEX idx_payments_status ON payments(status);
+-- Partial index for active carts with items
+CREATE INDEX CONCURRENTLY idx_active_carts_with_items ON carts(cart_id) 
+WHERE status = 'active' AND cart_id IN (SELECT DISTINCT cart_id FROM cart_items);
 ```
 
-#### 8.1.2 Query Optimization
+#### 13.2 Query Optimization
 
-```java
-@Repository
-public interface ProductRepository extends JpaRepository<Product, Long> {
+```javascript
+// Optimized query to get cart with all details in single query
+async getCartWithDetails(cartId) {
+    const query = `
+        SELECT 
+            c.*,
+            json_agg(
+                json_build_object(
+                    'cartItemId', ci.cart_item_id,
+                    'productId', ci.product_id,
+                    'sku', ci.sku,
+                    'quantity', ci.quantity,
+                    'unitPrice', ci.unit_price,
+                    'totalPrice', ci.total_price
+                )
+            ) FILTER (WHERE ci.cart_item_id IS NOT NULL) as items,
+            json_build_object(
+                'subtotal', cm.subtotal,
+                'discountTotal', cm.discount_total,
+                'taxTotal', cm.tax_total,
+                'shippingCost', cm.shipping_cost,
+                'grandTotal', cm.grand_total,
+                'itemCount', cm.item_count
+            ) as metadata
+        FROM carts c
+        LEFT JOIN cart_items ci ON c.cart_id = ci.cart_id
+        LEFT JOIN cart_metadata cm ON c.cart_id = cm.cart_id
+        WHERE c.cart_id = $1
+        GROUP BY c.cart_id, cm.metadata_id
+    `;
     
-    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category WHERE p.id = :id")
-    Optional<Product> findByIdWithCategory(@Param("id") Long id);
-    
-    @Query("SELECT p FROM Product p WHERE " +
-           "LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%'))")
-    Page<Product> searchProducts(@Param("search") String search, Pageable pageable);
+    const result = await this.db.query(query, [cartId]);
+    return result.rows[0];
 }
 ```
 
-### 8.3 Connection Pooling
+---
 
-```yaml
-spring:
-  datasource:
-    hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+### 14. Appendix
+
+#### 14.1 Database Migration Scripts
+
+```sql
+-- V1__initial_schema.sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE users (
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE products (
+    product_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Cart tables as defined in section 3.1
 ```
 
-## 9. Testing Strategy
+#### 14.2 API Response Examples
 
-### 9.1 Unit Tests
-
-```java
-@ExtendWith(MockitoExtension.class)
-class UserServiceTest {
-    
-    @Mock
-    private UserRepository userRepository;
-    
-    @Mock
-    private PasswordEncoder passwordEncoder;
-    
-    @Mock
-    private JwtTokenProvider tokenProvider;
-    
-    @InjectMocks
-    private UserService userService;
-    
-    @Test
-    void testRegisterUser_Success() {
-        // Arrange
-        UserRegistrationRequest request = new UserRegistrationRequest();
-        request.setEmail("test@example.com");
-        request.setPassword("password123");
-        request.setFirstName("John");
-        request.setLastName("Doe");
-        
-        when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
-        when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
-        
-        // Act
-        UserDTO result = userService.registerUser(request);
-        
-        // Assert
-        assertNotNull(result);
-        assertEquals("test@example.com", result.getEmail());
-        verify(userRepository).save(any(User.class));
-    }
-    
-    @Test
-    void testRegisterUser_EmailAlreadyExists() {
-        // Arrange
-        UserRegistrationRequest request = new UserRegistrationRequest();
-        request.setEmail("existing@example.com");
-        
-        when(userRepository.existsByEmail(anyString())).thenReturn(true);
-        
-        // Act & Assert
-        assertThrows(BusinessException.class, () -> userService.registerUser(request));
-    }
-}
-```
-
-### 9.2 Integration Tests
-
-```java
-@SpringBootTest
-@AutoConfigureMockMvc
-@Testcontainers
-class OrderControllerIntegrationTest {
-    
-    @Autowired
-    private MockMvc mockMvc;
-    
-    @Autowired
-    private ObjectMapper objectMapper;
-    
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:14")
-        .withDatabaseName("testdb")
-        .withUsername("test")
-        .withPassword("test");
-    
-    @Test
-    void testCreateOrder_Success() throws Exception {
-        // Arrange
-        OrderRequest request = new OrderRequest();
-        // ... set up request
-        
-        String token = "Bearer valid-jwt-token";
-        
-        // Act & Assert
-        mockMvc.perform(post("/api/orders")
-                .header("Authorization", token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.id").exists())
-            .andExpect(jsonPath("$.status").value("PENDING"));
-    }
-}
-```
-
-## 10. Logging and Monitoring
-
-### 10.1 Logging Configuration
-
-```java
-@Slf4j
-@Service
-public class OrderService {
-    
-    public OrderDTO createOrder(OrderRequest request, String userEmail) {
-        log.info("Creating order for user: {}", userEmail);
-        
-        try {
-            // Order creation logic
-            OrderDTO order = processOrder(request, userEmail);
-            
-            log.info("Order created successfully. Order ID: {}", order.getId());
-            return order;
-            
-        } catch (Exception e) {
-            log.error("Error creating order for user: {}", userEmail, e);
-            throw e;
+```json
+// Successful cart retrieval
+{
+  "success": true,
+  "data": {
+    "cartId": "550e8400-e29b-41d4-a716-446655440000",
+    "userId": "660e8400-e29b-41d4-a716-446655440001",
+    "status": "active",
+    "items": [
+      {
+        "cartItemId": "770e8400-e29b-41d4-a716-446655440002",
+        "productId": "880e8400-e29b-41d4-a716-446655440003",
+        "sku": "LAPTOP-001",
+        "quantity": 1,
+        "unitPrice": 999.99,
+        "discountAmount": 0,
+        "taxAmount": 80.00,
+        "totalPrice": 1079.99,
+        "productDetails": {
+          "name": "Premium Laptop",
+          "image": "https://example.com/laptop.jpg"
         }
-    }
+      }
+    ],
+    "metadata": {
+      "subtotal": 999.99,
+      "discountTotal": 0,
+      "taxTotal": 80.00,
+      "shippingCost": 0,
+      "grandTotal": 1079.99,
+      "itemCount": 1
+    },
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T10:35:00Z"
+  }
 }
 ```
 
-### 10.2 Application Monitoring
+---
 
-```yaml
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-```
+### 15. Conclusion
 
-## 11. Conclusion
+This Low Level Design document provides comprehensive technical specifications for implementing the Shopping Cart module. It covers all aspects from data models and API specifications to error handling, caching strategies, and deployment configurations. The design emphasizes scalability, maintainability, and security while ensuring optimal performance through proper indexing and caching strategies.
 
-This Low Level Design document provides comprehensive technical specifications for implementing the E-commerce Platform. It covers all essential components including data models, API specifications, service implementations, security measures, and performance optimizations. The design follows industry best practices and ensures scalability, maintainability, and security of the application.
+**Key Implementation Priorities:**
+1. Core cart operations (add, update, remove items)
+2. Integration with product, inventory, and pricing services
+3. Caching layer for performance
+4. Comprehensive error handling and validation
+5. Security measures (authentication, authorization, rate limiting)
+6. Monitoring and logging infrastructure
+
+**Next Steps:**
+1. Review and approval of LLD
+2. Setup development environment
+3. Implement core cart service
+4. Develop integration layers
+5. Write comprehensive tests
+6. Deploy to staging environment
+7. Performance testing and optimization
+8. Production deployment
