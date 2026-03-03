@@ -326,3 +326,96 @@ CREATE INDEX idx_products_name ON products(name);
 - Transactional operations for data consistency
 - Pagination support for large datasets (can be extended)
 - Search functionality with case-insensitive matching
+
+## 9. Shopping Cart Module
+
+### 9.1 UI Components - Product Details Table
+
+The Shopping Cart interface must display a Product Details Table with the following mandatory data fields for each cart item:
+
+**Mandatory Display Fields:**
+
+1. **Product Name** - The full name of the product as stored in the products table
+2. **Unit Price** - The individual price per unit of the product (formatted as currency with 2 decimal places)
+3. **Quantity** - The number of units of this product in the cart (editable field)
+4. **Line Item Subtotal** - The calculated subtotal for this specific product line (Unit Price × Quantity)
+
+**Display Format:**
+
+| Product Name | Unit Price | Quantity | Line Item Subtotal |
+|--------------|------------|----------|--------------------|
+| Product A | $XX.XX | N | $XXX.XX |
+| Product B | $XX.XX | N | $XXX.XX |
+
+**UI Requirements:**
+- All monetary values must be displayed with currency symbol and 2 decimal places
+- Quantity field must be editable with increment/decrement controls
+- Line Item Subtotal must update automatically when quantity changes
+- Product Name should be clickable and link to product detail page
+
+### 9.2 Functional Requirements - Price Calculations
+
+The Shopping Cart module must implement the following calculation logic with explicit formulas:
+
+**Calculation Formulas:**
+
+1. **Line Item Subtotal Calculation:**
+   ```
+   Line Item Subtotal = Unit Price × Quantity
+   ```
+   - Applied individually to each product in the cart
+   - Recalculated automatically whenever quantity is modified
+   - Rounded to 2 decimal places using HALF_UP rounding mode
+
+2. **Cart Subtotal Calculation:**
+   ```
+   Cart Subtotal = Σ(Line Item Subtotal for all items)
+   ```
+   - Sum of all individual line item subtotals
+   - Represents the total cost of all products before taxes, shipping, or discounts
+   - Rounded to 2 decimal places using HALF_UP rounding mode
+
+3. **Total Calculation Formula:**
+   ```
+   Total = Cart Subtotal + Shipping Cost + Tax - Discount Amount
+   ```
+   Where:
+   - **Shipping Cost:** Calculated based on shipping method selected (flat rate, weight-based, or free shipping threshold)
+   - **Tax:** Calculated as `Cart Subtotal × Tax Rate` (tax rate based on delivery location)
+   - **Discount Amount:** Applied from coupon codes or promotional offers (can be percentage or fixed amount)
+   - Final Total rounded to 2 decimal places using HALF_UP rounding mode
+
+4. **Rounding Rules for Currency Display:**
+   - All monetary calculations must use `BigDecimal` with `DECIMAL128` precision
+   - Intermediate calculations maintain full precision
+   - Display values rounded to 2 decimal places using `RoundingMode.HALF_UP`
+   - Currency symbol ($) prepended to all displayed amounts
+   - Thousand separators (,) used for amounts ≥ 1,000
+
+**Calculation Triggers:**
+- Recalculate all values when:
+  - Product quantity is modified
+  - Product is added to cart
+  - Product is removed from cart
+  - Shipping method is changed
+  - Discount code is applied or removed
+  - Delivery location is updated (affects tax)
+
+**Cost Breakdown Display:**
+
+The cart must display a clear cost breakdown section:
+
+```
+Cart Subtotal:        $XXX.XX
+Shipping:             $XX.XX
+Tax (X.X%):          $XX.XX
+Discount:            -$XX.XX
+─────────────────────────────
+Total:               $XXX.XX
+```
+
+**Implementation Notes:**
+- All price calculations must be performed server-side for security
+- Client-side calculations are for display purposes only and must be validated server-side
+- Prevent race conditions during concurrent cart updates using optimistic locking
+- Log all price calculation operations for audit purposes
