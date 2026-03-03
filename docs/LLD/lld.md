@@ -1,7 +1,7 @@
 # Low Level Design Document
 ## E-Commerce Platform - Shopping Cart Module
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Date:** 2024-01-21  
 **Status:** Updated  
 **Author:** Engineering Team  
@@ -130,6 +130,45 @@ CREATE TABLE cart_items (
 CREATE INDEX idx_cart_items_cart_id ON cart_items(cart_id);
 CREATE INDEX idx_cart_items_product_id ON cart_items(product_id);
 CREATE UNIQUE INDEX idx_cart_items_unique ON cart_items(cart_id, product_id, variant_id);
+```
+
+#### 3.1.3 Price Snapshot Mechanism
+
+**Purpose:** Capture product price at the time of adding to cart to handle price changes and maintain pricing integrity.
+
+**Implementation Details:**
+- The `unit_price` field in `cart_items` table serves as the price snapshot
+- When an item is added to cart, the current product price is fetched from Product Service and stored in `unit_price`
+- This snapshot price remains unchanged even if the product price changes later
+- Price comparison logic can be implemented to notify users of price changes before checkout
+
+**Price Change Handling:**
+```javascript
+class PriceSnapshotHandler {
+    async validatePriceSnapshot(cartItemId) {
+        const cartItem = await this.getCartItem(cartItemId);
+        const currentPrice = await this.productService.getPrice(cartItem.productId);
+        
+        if (cartItem.unitPrice !== currentPrice) {
+            return {
+                priceChanged: true,
+                snapshotPrice: cartItem.unitPrice,
+                currentPrice: currentPrice,
+                difference: currentPrice - cartItem.unitPrice
+            };
+        }
+        
+        return { priceChanged: false };
+    }
+    
+    async updatePriceSnapshot(cartItemId) {
+        const cartItem = await this.getCartItem(cartItemId);
+        const currentPrice = await this.productService.getPrice(cartItem.productId);
+        
+        await this.repository.updateItemPrice(cartItemId, currentPrice);
+        return { updated: true, newPrice: currentPrice };
+    }
+}
 ```
 
 ### 3.2 Data Models
@@ -286,6 +325,7 @@ The presentation layer handles user interactions and UI state management for the
    - Check inventory availability
    - Update cart item quantity
    - **Quantity mutation via PUT triggers automatic recalculation**: When quantity is updated, the system automatically recalculates the item subtotal (unit_price × new_quantity) and updates the cart total by summing all item subtotals
+   - **Explicit Recalculation Trigger**: Upon any PUT /api/v1/cart/items/:id operation, the system must immediately recalculate item subtotal and cart total before returning the response. This is a mandatory post-update operation that ensures data consistency.
    - Update cache
    - Publish cart_item_updated event
 
@@ -316,6 +356,7 @@ When a cart becomes empty (all items removed or cart cleared):
 - Set `total_amount` to 0.00
 - Maintain cart record (don't delete)
 - **Empty cart state triggers UI 'continue shopping' redirection link**: The frontend receives an empty cart response and displays the Empty Cart View component with a prominent call-to-action link redirecting users to continue shopping (typically to homepage or product catalog)
+- **Business Rule for Empty Cart UI**: When cart is empty (itemCount = 0), the system must return an empty cart indicator in the API response, and the frontend must display the 'continue shopping' redirection link as specified in the Empty Cart View component (Section 4.2.2)
 - Cache the empty state
 - Publish cart_emptied event
 
@@ -1494,6 +1535,7 @@ console.log(cart);
 | 1.1 | 2024-01-18 | Engineering Team | Added caching strategy and error handling |
 | 1.2 | 2024-01-21 | Engineering Team | Added integration points and monitoring |
 | 1.3 | 2024-01-21 | Engineering Team | Applied RCA modifications: Added presentation layer components, documented default quantity behavior, documented quantity mutation recalculation logic, and documented empty cart UI redirection |
+| 1.4 | 2024-01-21 | Engineering Team | Added price snapshot mechanism (Section 3.1.3), enhanced empty cart business rule (Section 4.3.2), added explicit recalculation trigger for PUT operations (Section 4.3.1) |
 
 ---
 
