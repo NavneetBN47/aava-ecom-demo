@@ -64,6 +64,7 @@ classDiagram
         +getDescription() String
         +setDescription(String description) void
         +getPrice() BigDecimal
+        +getPrice() BigDecimal
         +setPrice(BigDecimal price) void
         +getCategory() String
         +setCategory(String category) void
