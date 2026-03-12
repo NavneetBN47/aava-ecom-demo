@@ -20,7 +20,6 @@ classDiagram
         +getProductById(Long id) ResponseEntity~Product~
         +createProduct(Product product) ResponseEntity~Product~
         +updateProduct(Long id, Product product) ResponseEntity~Product~
-        +deleteProduct(Long id) ResponseEntity~Void~
         +getProductsByCategory(String category) ResponseEntity~List~Product~~
         +searchProducts(String keyword) ResponseEntity~List~Product~~
     }
@@ -32,7 +31,6 @@ classDiagram
         +getProductById(Long id) Product
         +createProduct(Product product) Product
         +updateProduct(Long id, Product product) Product
-        +deleteProduct(Long id) void
         +getProductsByCategory(String category) List~Product~
         +searchProducts(String keyword) List~Product~
     }
@@ -43,7 +41,6 @@ classDiagram
         +findAll() List~Product~
         +findById(Long id) Optional~Product~
         +save(Product product) Product
-        +deleteById(Long id) void
         +findByCategory(String category) List~Product~
         +findByNameContainingIgnoreCase(String keyword) List~Product~
     }
@@ -198,38 +195,7 @@ sequenceDiagram
     end
 ```
 
-### 3.5 Delete Product
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ProductController
-    participant ProductService
-    participant ProductRepository
-    participant Database
-    
-    Client->>+ProductController: DELETE /api/products/{id}
-    ProductController->>+ProductService: deleteProduct(id)
-    
-    ProductService->>+ProductRepository: findById(id)
-    ProductRepository->>+Database: SELECT * FROM products WHERE id = ?
-    Database-->>-ProductRepository: Optional<Product>
-    ProductRepository-->>-ProductService: Optional<Product>
-    
-    alt Product Exists
-        ProductService->>+ProductRepository: deleteById(id)
-        ProductRepository->>+Database: DELETE FROM products WHERE id = ?
-        Database-->>-ProductRepository: Success
-        ProductRepository-->>-ProductService: void
-        ProductService-->>ProductController: void
-        ProductController-->>Client: ResponseEntity (204)
-    else Product Not Found
-        ProductService-->>ProductController: throw ProductNotFoundException
-        ProductController-->>Client: ResponseEntity (404)
-    end
-```
-
-### 3.6 Get Products By Category
+### 3.5 Get Products By Category
 
 ```mermaid
 sequenceDiagram
@@ -249,7 +215,7 @@ sequenceDiagram
     ProductController-->>-Client: ResponseEntity<List<Product>>
 ```
 
-### 3.7 Search Products
+### 3.6 Search Products
 
 ```mermaid
 sequenceDiagram
@@ -277,7 +243,6 @@ sequenceDiagram
 | GET | `/api/products/{id}` | Get product by ID | None | Product |
 | POST | `/api/products` | Create new product | Product | Product |
 | PUT | `/api/products/{id}` | Update existing product | Product | Product |
-| DELETE | `/api/products/{id}` | Delete product | None | None |
 | GET | `/api/products/category/{category}` | Get products by category | None | List<Product> |
 | GET | `/api/products/search?keyword={keyword}` | Search products by name | None | List<Product> |
 
